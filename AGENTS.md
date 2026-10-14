@@ -14,8 +14,12 @@ skills/
     SKILL.md          # 必需：frontmatter + 正文
     references/       # 可选：按需加载的参考资料
     scripts/          # 可选：skill 调用的脚本
+
+drafts/               # 开发中的 skill，目录结构同 skills/；验证有效后移入 skills/
+  <skill-name>/
+    _sources/         # 可选：开发期参考（本 skill 派生自哪些 skill），移入 skills/ 时不随迁
 ```
 
 ## 约定
 
-- 新增或变更 skill 时，同步更新 `CHANGELOG.md` 的 `[Unreleased]` 段。
+- 新增或变更 `skills/` 下的 skill 时，同步更新 `CHANGELOG.md` 的 `[Unreleased]` 段（`drafts/` 不记）。
