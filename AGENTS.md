@@ -9,16 +9,16 @@
 ## 目录结构
 
 ```text
-skills/
-  <skill-name>/       # 一个 skill 一个目录，kebab-case
-    SKILL.md          # 必需：frontmatter + 正文
-    references/       # 可选：按需加载的参考资料
-    scripts/          # 可选：skill 调用的脚本
-
-drafts/               # 开发中的 skill，目录结构同 skills/；验证有效后移入 skills/
-  <skill-name>/
-    _sources/         # 可选：开发期参考（本 skill 派生自哪些 skill）
-    _dev/             # 可选：开发期计划（plan.md）与测试记录（test-log.md，只记结论与关键片段）
+.
+├── skills/
+│   └── <skill-name>/       # 一个 skill 一个目录，kebab-case
+│       ├── SKILL.md        # 必需：frontmatter + 正文
+│       ├── references/     # 可选：按需加载的参考资料
+│       └── scripts/        # 可选：skill 调用的脚本
+└── drafts/                 # 开发中的 skill，目录结构同 skills/；验证有效后移入 skills/
+    └── <skill-name>/
+        ├── _sources/       # 可选：开发期参考（本 skill 派生自哪些 skill）
+        └── _dev/           # 可选：开发期计划（plan.md）与测试记录（test-log.md，只记结论与关键片段）
 ```
 
 ## 约定
