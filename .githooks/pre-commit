@@ -1,0 +1,9 @@
+#!/bin/sh
+# CLAUDE.md must remain a fixed pointer to AGENTS.md.
+expected='@AGENTS.md
+
+<!-- 固定指针文件：永远不要编辑本文件，所有约定只写 AGENTS.md。此不变式由 .githooks/pre-commit 强制。 -->'
+if [ "$(cat CLAUDE.md | tr -d '\r')" != "$expected" ]; then
+  echo "pre-commit: CLAUDE.md is a fixed pointer to AGENTS.md. Edit AGENTS.md instead." >&2
+  exit 1
+fi
