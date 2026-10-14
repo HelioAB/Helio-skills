@@ -17,9 +17,11 @@ skills/
 
 drafts/               # 开发中的 skill，目录结构同 skills/；验证有效后移入 skills/
   <skill-name>/
-    _sources/         # 可选：开发期参考（本 skill 派生自哪些 skill），移入 skills/ 时不随迁
+    _sources/         # 可选：开发期参考（本 skill 派生自哪些 skill）
+    _dev/             # 可选：开发期计划（plan.md）与测试记录（test-log.md，只记结论与关键片段）
 ```
 
 ## 约定
 
+- `drafts/` 下 `_` 前缀目录均为开发期专用：不属于运行结构，移入 `skills/` 时整目录丢弃；开发期文件一律置于 `_` 目录内，不裸放于 skill 根目录。
 - 新增或变更 `skills/` 下的 skill 时，同步更新 `CHANGELOG.md` 的 `[Unreleased]` 段（`drafts/` 不记）。

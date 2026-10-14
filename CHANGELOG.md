@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `_`-prefix rule for `drafts/` (in `AGENTS.md`): underscore-prefixed directories are
+  dev-time only and dropped wholesale on graduation to `skills/`; dev-time files always
+  live inside a `_` directory, never bare at the skill root. New optional `_dev/`
+  folder (`plan.md` + `test-log.md`) alongside `_sources/`.
 - `drafts/` staging area convention (in `AGENTS.md`): skills under development live in
   `drafts/` with the same layout as `skills/`, and may carry a `_sources/` folder of
   dev-time source material that stays behind on graduation to `skills/`.
