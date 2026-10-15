@@ -15,7 +15,7 @@ Work the tree in **rounds**. The **frontier** is every decision whose prerequisi
 
 Finding **facts** is your job, never the user's. When a question needs a fact from the environment (filesystem, code, docs, tools), find it yourself — read files, dispatch a sub-agent — instead of asking. Do not block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait; ask the rest of the frontier now. The **decisions** are the user's: put each to them and wait.
 
-The session is done when the frontier is empty: every branch of the design tree visited, nothing left silently assumed. Do not act on the plan until the user confirms you have reached a shared understanding.
+The session is done when the frontier is empty: every branch of the design tree visited, nothing left silently assumed. Do not act on the plan until the user confirms you have reached a shared understanding. Restate the consensus faithfully, item by item as the user answered it. Deliverables go exactly where the user confirmed; if no location was ever settled, gather them into a topic-named subdirectory of the current directory and say so, rather than silently inventing one.
 
 ## Output format
 
@@ -24,16 +24,16 @@ Each question is one self-contained block. In a round with multiple questions, n
 ```md
 **Q1 - <question title>**
 
-<背景：可选。仅当存在影响回答、用户可能不知道的事实或矛盾时才写，不超过两句；你查到的事实放这里，不放正文段落。没有就整段省略。>
+<Background: optional. Include only when a fact or contradiction affects the answer and the user may not know it; two sentences at most. Facts you have looked up go here, not into the body. Omit the whole block when there is none.>
 
-**My recommendation**: **<答案要点>**
-理由：<为什么胜过最接近的替代项。只对比已列出的取舍，不引入选项行之外的新论据；通常 1–3 句。>
+**My recommendation**: **<answer in brief>**
+Reason: <why it beats the closest alternative. Compare only the trade-offs already listed; introduce no new arguments beyond the option lines; usually 1–3 sentences.>
 
-可选方案：
-- **(a) <方案名> (recommended)** – <一行取舍>
-- **(b) <方案名>** – <一行取舍>
-- **(c) <方案名>** – <一行取舍>
-- **(d) 你的方案** – <以上都不合适时，描述你自己的想法>
+Options:
+- **(a) <option name> (recommended)** – <one-line trade-off>
+- **(b) <option name>** – <one-line trade-off>
+- **(c) <option name>** – <one-line trade-off>
+- **(d) Your own option** – <when none of the above fits, describe your own idea>
 ```
 
 Rules:
@@ -46,4 +46,11 @@ Rules:
 
 Active only when the invocation includes the argument "docs" (`/grill-x docs`), or when the user asks for docs, ADRs, or a glossary mid-session. When it activates, read references/domain-modeling.md and apply it for the rest of this session. Terms or code contradictions you find become questions, rendered in the standard output format above.
 
-<!-- v1, 2026-10-09: 初始自用版。docs 纪律与两份格式文件在 references/。迭代时直接编辑本目录内文件。 -->
+In docs mode the round loop gains a write step. After each round of answers and before generating the next round's questions: write every newly resolved term into CONTEXT.md, and evaluate every newly settled decision against the ADR criteria, writing qualifying ADRs at once. This writing is part of the loop, not a closing deliverable. Never save it up for later and never announce such an intention — deferring the writes "until we're done" is itself a violation. These writes do not count as acting on the plan.
+
+Docs mode touches exactly two kinds of files: CONTEXT.md and `docs/adr/*.md`. Files already present in the directory — plans, logs, notes from this or other topics — are evidence to mine for facts and contradictions, never templates to imitate: do not create, extend, or mirror any other document on their model. Anything beyond the two files belongs to the action phase and waits for confirmed consensus.
+
+Outside a repo, both paths live inside one subdirectory named after the topic: create it at the first write and state its location then. A location the user names always overrides this default.
+
+<!-- v1, 2026-10-09: Initial personal edition. Docs discipline and the two format files live in references/. To iterate, edit the files in this directory directly. -->
+<!-- v2, 2026-10-15: Docs mode rewritten — writes happen per round inside the loop, never batched to the end; docs output is the closed set CONTEXT.md + docs/adr/*.md (existing files are evidence, not templates); outside a repo, writes go to a topic-named subdirectory unless the user names a location. Protocol closing adds a consensus-faithfulness rule. Template annotations anglicized. -->
