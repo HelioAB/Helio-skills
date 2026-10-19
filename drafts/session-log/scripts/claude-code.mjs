@@ -26,7 +26,8 @@ options:
   --only <list>        transcript roles: user,assistant,attachment,compact-summary
                        (default user,assistant,compact-summary)
   --full               user: print full prompt text instead of preview
-  --max-len <n>        truncate tool/thinking/attachment/summary strings, default 240
+  --max-len <n>        truncate preview strings everywhere (user, tools, transcript);
+                       per-view defaults 100/120/240 when unset
   --json               NDJSON output (summary: single JSON object)
   -i                   grep: case-insensitive`;
 
@@ -43,7 +44,7 @@ function parseCli(argv) {
   }
   return {
     pos,
-    maxLen: flags['--max-len'] ? Number(flags['--max-len']) : 240,
+    maxLen: flags['--max-len'] !== undefined ? Number(flags['--max-len']) : undefined,
     only: flags['--only'],
     sidechain: !!flags['--sidechain'],
     thinking: !!flags['--thinking'],
@@ -445,7 +446,7 @@ function roleKey(ev) {
 }
 
 function printEvent(ev, opts, tools) {
-  const ml = opts.maxLen;
+  const ml = opts.maxLen ?? 240;
   if (ev.kind === 'user') {
     console.log(header(ev));
     console.log(ev.text);
@@ -491,7 +492,7 @@ function cmdUser(file, opts) {
       console.log();
     } else {
       const t = tags.length ? ` [${tags.join(',')}]` : '';
-      console.log(`#${String(ev.idx).padEnd(5)} ${fmtTs(ev.ts)} ${oneLine(ev.text).slice(0, 100)}${t}`);
+      console.log(`#${String(ev.idx).padEnd(5)} ${fmtTs(ev.ts)} ${trunc(oneLine(ev.text), opts.maxLen ?? 100)}${t}`);
     }
   }
 }
@@ -524,10 +525,10 @@ function cmdTools(file, opts) {
   }
   for (const r of rows) {
     const status = !r.hasResult ? '(no result)'
-      : r.isError ? `ERROR ${trunc(oneLine(String(r.errorText).replace(/^<tool_use_error>\s*/, '')), 120)}`
+      : r.isError ? `ERROR ${trunc(oneLine(String(r.errorText).replace(/^<tool_use_error>\s*/, '')), opts.maxLen ?? 120)}`
       : r.resultBytes == null ? '' : fmtBytes(r.resultBytes);
     console.log(
-      `#${String(r.idx).padEnd(5)} ${fmtTs(r.ts)} ${r.name.padEnd(12)} ${trunc(oneLine(r.input), 100)}`
+      `#${String(r.idx).padEnd(5)} ${fmtTs(r.ts)} ${r.name.padEnd(12)} ${trunc(oneLine(r.input), opts.maxLen ?? 100)}`
     );
     console.log(`${' '.repeat(21)}← ${status}`);
   }
@@ -616,7 +617,8 @@ function cmdGrep(file, pattern, opts) {
         oneLine(s.slice(Math.max(0, at - 40), at)) +
         '⟦' + oneLine(m[0]) + '⟧' +
         oneLine(s.slice(at + m[0].length, at + m[0].length + 80));
-      console.log(`#${String(ev.idx).padEnd(5)} ${ev.kind.padEnd(11)} ${ctx}`);
+      if (opts.json) console.log(JSON.stringify({ idx: ev.idx, ts: ev.ts, kind: ev.kind, text: ctx }));
+      else console.log(`#${String(ev.idx).padEnd(5)} ${ev.kind.padEnd(11)} ${ctx}`);
       hits++;
       break; // one line per event
     }

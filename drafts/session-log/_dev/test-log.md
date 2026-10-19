@@ -22,7 +22,7 @@
 
 ## T2 重构为 session-log dispatcher 架构（2026-10-19）
 
-本轮变更（grill-x docs 会话定案，见 ../CONTEXT.md、../docs/adr/0001、0002）：
+本轮变更（grill-x docs 会话定案，见 `_dev/CONTEXT.md`、`_dev/docs/adr/0001、0002`；原 ../ 路径文件未入库失存，2026-10-20 重建）：
 
 - 目录 `cc-jsonl` → `session-log`；脚本 `scripts/cc-jsonl.mjs` → `scripts/claude-code.mjs`（品牌文本同步）。
 - SKILL.md 重写为 dispatcher：分配规则（显式点名 > 路径模式 > 文件头 schema > 追问）、统一命令面（7 命令冻结，event idx 唯一通用 get ref）、claude-code 条目（别名 / locator / 存储位置 / 识别特征 / 附加项）、评估流程 + 导入流程（分层取用：重定向到文件，消费端 Read/Grep 按需取）。
@@ -62,4 +62,20 @@
 
 用户反馈（仅记录，2026-10-19）：
 
-- **派生产物不应默认落位 %TEMP%**：本轮按 skill 导入流程指引把重定向产物写到了 %TEMP%，用户指出该位置事后难以定位——想引用时无从引用；期望 skill 默认输出到用户能快速找到、可稳定引用的位置。（仅记录意见本身，不附修改建议）
+- **派生产物不应默认落位 %TEMP%**：本轮按 skill 导入流程指引把重定向产物写到了 %TEMP%，用户指出该位置事后难以定位——想引用时无从引用；期望 skill 默认输出到用户能快速找到、可稳定引用的位置。（仅记录意见本身，不附修改建议；已解决：定案 ADR 0003，实施见 T4）
+
+## T4 grep --json 实现 + --max-len 统一 + 输出落位定案（2026-10-20）
+
+本轮变更（grill-x docs 会话定案，见 `_dev/CONTEXT.md`、`_dev/docs/adr/0003`）：
+
+- `grep --json` 实现：每命中事件一条 NDJSON `{idx, ts, kind, text}`（text 保留 ⟦⟧ 匹配标记）；修掉 T3 发现的静默忽略。
+- `--max-len` 统一作用面：user 预览（原固定 slice 100）、tools brief / ERROR 文本（原固定 100/120）随 flag 生效；不传时各视图默认不变（100/120/240）。附带外观变化：user 预览超长时补 `…`（原为硬切无标记）。
+- SKILL.md 导入流程第 2 步重写：默认落位 `<项目根>/session-logs/<uuid8>-<视图>.md`，用户当次指定目录则仅该会话沿用（无持久化状态），temp 仅限自知型中间产物，首次创建时建议 gitignore。
+- T2 段失存引用（../CONTEXT.md、../docs/adr/）改为 `_dev/` 重建路径。
+
+验证（对象：`53772e58`。注意该 live 会话在 T3 记录后继续增长——86→103 行、269.2→285.9KB、第 5 条 prompt 与 Bash 调用新增，基线数字随之偏移属快照差异，非脚本回归）：
+
+- **grep --json**：`grep skill` 文本 / JSON 均 9 条命中，事件一致（#1/#12/#25…）；9 行全部通过 NDJSON 逐行解析校验；无命中提示走 stderr，不污染输出流。
+- **--max-len**：`user --max-len 30` 预览 30 字符 + `…`；`tools --max-len 30` brief 与 ERROR 文本截断生效，结果大小显示（421B/188B/192B）不受影响；不传 flag 时 user 100（现带 `…`）、tools 100/120，与 T3 同快照记录一致。
+- **回归**：summary / usage / get 正常；`get 8a449cc7` → #19 与 T3 一致；增长后新增条目类型（last-prompt、cost-state 等）解析无异常。
+- **输出落位流程**：按新默认创建 `<worktree 根>/session-logs/53772e58-dialogue.md`，`transcript --no-tools` 重定向出 129 行（T3 时 114 行，会话增长所致），验证后清理目录，工作树还原干净。
