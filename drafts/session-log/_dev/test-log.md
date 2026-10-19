@@ -99,3 +99,24 @@
 - `[Request interrupted by user]` 等中断提示以普通 user 文本记录（非 `isMeta`、不以 `<` 开头），`--no-meta` 不滤——沿用 `user`/`summary` 的既有判定谓词，保持三处口径一致。
 
 迁移门槛（本轮定案，待办）：完成一次真实评估 dogfood——五步评估流程完整评估一个真实 skill 测试会话（候选：flashcard-extract 首测）——走通且称手后移入 `skills/` 并记 CHANGELOG，此前留 `drafts/`。
+
+## T6 真实评估 dogfood：flashcard-extract 首测（2026-10-20）
+
+对象：T5 所定迁移门槛的执行——五步评估流程完整评估 flashcard-extract 首测会话 `38465864-0551-4298-87f7-f6f1723db77a.jsonl`（354.6KB / 103 行，cwd sandbox__005-flashcard_agent；内容：提取《02 层级就是一切》→ 两批 17 张卡 → 写入）。产物落 `D:\11__Deliverables\_Sandbox\sandbox__003-session-log\session-logs\`（38465864-transcript / tools / usage.md）；summary、user 当场 stdout 读完未落盘。
+
+结论：**走通**。事后独立复核（另一会话重跑源日志逐项核对）：
+
+- **可复现**：三份产物与现脚本重跑 `diff` 逐字节一致。
+- **idx 同轴**：transcript 8 块 = usage 8 行（#12/#21/#26/#30/#34/#42/#47/#52），tools 7 行引用同一编号，`get <file> <ref>` 可取（注意 file 在前）。
+- **合计交叉验证**：usage 逐行求和 33,363 in / 269,120 cache-r / 22,637 out 与总计行及 summary tokens 行一致；tools 7 calls 与直方图一致。
+- **--no-meta**：恰隐 #5 [cmd]、#6 [meta] 共 2 块，尾部提示正确。
+- **落位**：消费 cwd 非 git repo → 按 ADR 0003 落 `cwd/session-logs/`，`<uuid8>-<view>.md` 合规。
+- **切片够用**：transcript 13.4KB ≈ 源 3.8%，两批候选全文、用户两次批准、写入报告齐全，足以复盘评审；tools 行为指纹一眼可读（Read 准则+源文档 → 问目标 → 批 1 → 问路径 → Glob 查重 → Write，0 错误）——正是第 4 步想要的东西。
+- 小注：summary 末刻 01:00:33 来自尾部 `away_summary` 系统条目，最后 assistant 消息实为 00:57:24（00:57:26 行同 message.id 合并入 #52）——非丢数据。
+
+新发现（非阻塞，未修）：
+
+- **人的结构化决策不在 `user` 视图**：AskUserQuestion 的用户选择记录在 tool_result（#23 形如 `User answered: …="完整覆盖全部原则（推荐）"`），`user`、`transcript --no-tools`、`tools`（仅显大小）三处均不可见；`grep` 可命中、assistant 下一条复述兜底，本会话未丢信息。候选处置：SKILL.md claude-code Format notes 补一句，或维持现状靠 grep 步骤覆盖。
+- **`--no-tools` 下纯工具 assistant 消息留空块**（#12、#47 仅头行）：保住 idx 锚点，可接受噪音。
+
+门槛状态：走通已客观验证（本条）；称手与否待用户判断——认可后移入 `skills/` 并记 CHANGELOG。
