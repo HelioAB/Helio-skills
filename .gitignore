@@ -12,3 +12,6 @@ desktop.ini
 
 # Claude Code local settings (machine-specific)
 .claude/settings.local.json
+
+# 本地 skill 安装副本（由 skills/ 或 drafts/ 派生，非源文件）
+.claude/skills/
