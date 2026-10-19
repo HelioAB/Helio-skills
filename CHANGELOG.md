@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `grill-x` skill (in `skills/grill-x/`): a relentless design-tree interview to sharpen
+  a plan or decision, with an optional `docs` mode that turns resolved terms into
+  CONTEXT.md and ADRs. Graduated from `drafts/grill-x` after T8 (criteria 1–6 all
+  passed; criterion 7 withdrawn as a gate on 2026-10-19); `_dev/` and `_sources/`
+  dropped per the `drafts/` convention.
+
 - `_`-prefix rule for `drafts/` (in `AGENTS.md`): underscore-prefixed directories are
   dev-time only and dropped wholesale on graduation to `skills/`; dev-time files always
   live inside a `_` directory, never bare at the skill root. New optional `_dev/`
