@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `session-log` skill (in `skills/session-log/`): parse any coding agent's recorded
+  session log — `summary` / `transcript` / `user` / `tools` / `usage` / `get` / `grep`
+  over an identical per-backend command surface (claude-code backend today) — with an
+  evaluation flow for analyzing a recorded session and a random-access import flow for
+  continuing an old session in a new one. Graduated from `drafts/session-log` after the
+  T6 real-evaluation dogfood (2026-10-20, flashcard-extract first test: byte-identical
+  reruns, idx alignment, cross-checked token totals); `_dev/` dropped per the `drafts/`
+  convention.
+
 - `grill-x` skill (in `skills/grill-x/`): a relentless design-tree interview to sharpen
   a plan or decision, with an optional `docs` mode that turns resolved terms into
   CONTEXT.md and ADRs. Graduated from `drafts/grill-x` after T8 (criteria 1–6 all
@@ -28,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Parked, not applied (session-log T6 finding): a human's structured decisions
+  (AskUserQuestion answers) are recorded only in the `tool_result`, so they are invisible
+  to `user` / `transcript --no-tools` / `tools`; today the `grep` step and the assistant's
+  next-message restatement cover it. Recorded here so it survives the `_dev/` drop — on
+  first real-world miss, add one sentence to the claude-code Format notes in `SKILL.md`.
 - `grill-x` post-graduation trim (2026-10-19): dropped the in-file version comments from
   `SKILL.md` (this changelog is the version record now); deduplicated `references/` —
   the ADR criteria survive in `ADR-FORMAT.md`, the single/multi-context layout in
