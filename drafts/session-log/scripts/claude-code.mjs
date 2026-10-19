@@ -23,6 +23,7 @@ options:
   --sidechain          include isSidechain (subagent) entries; hidden by default
   --thinking           include thinking blocks (transcript, grep)
   --no-tools           hide tool call/result lines (transcript)
+  --no-meta            hide harness-injected [cmd]/[meta] user blocks (transcript)
   --only <list>        transcript roles: user,assistant,attachment,compact-summary
                        (default user,assistant,compact-summary)
   --full               user: print full prompt text instead of preview
@@ -49,6 +50,7 @@ function parseCli(argv) {
     sidechain: !!flags['--sidechain'],
     thinking: !!flags['--thinking'],
     noTools: !!flags['--no-tools'],
+    noMeta: !!flags['--no-meta'],
     full: !!flags['--full'],
     json: !!flags['--json'],
     i: !!flags['-i'],
@@ -428,13 +430,16 @@ function cmdTranscript(file, opts) {
     (opts.only || 'user,assistant,compact-summary').split(',').map((s) => s.trim()).filter(Boolean)
   );
   let hiddenSide = 0;
+  let hiddenMeta = 0;
   for (const ev of events) {
     if (ev.sidechain && !opts.sidechain) { hiddenSide++; continue; }
     if (ev.kind === 'parse-error') { console.log(header(ev, `PARSE ERROR: ${ev.error}`)); continue; }
     if (!only.has(roleKey(ev))) continue;
+    if (opts.noMeta && ev.kind === 'user' && (ev.isMeta || ev.isCommand)) { hiddenMeta++; continue; }
     printEvent(ev, opts, tools);
   }
   if (hiddenSide) console.log(`\n(${hiddenSide} sidechain events hidden — use --sidechain)`);
+  if (hiddenMeta) console.log(`(${hiddenMeta} command/meta events hidden — remove --no-meta to show)`);
 }
 
 function roleKey(ev) {

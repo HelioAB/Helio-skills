@@ -79,3 +79,23 @@
 - **--max-len**：`user --max-len 30` 预览 30 字符 + `…`；`tools --max-len 30` brief 与 ERROR 文本截断生效，结果大小显示（421B/188B/192B）不受影响；不传 flag 时 user 100（现带 `…`）、tools 100/120，与 T3 同快照记录一致。
 - **回归**：summary / usage / get 正常；`get 8a449cc7` → #19 与 T3 一致；增长后新增条目类型（last-prompt、cost-state 等）解析无异常。
 - **输出落位流程**：按新默认创建 `<worktree 根>/session-logs/53772e58-dialogue.md`，`transcript --no-tools` 重定向出 129 行（T3 时 114 行，会话增长所致），验证后清理目录，工作树还原干净。
+
+## T5 `--no-meta` 过滤旗标（2026-10-20）
+
+本轮变更（grill-x 会话定案：draft 期服务对象锚定评估流程，压缩/导入场景定性 corner case 搁置）：
+
+- `transcript` 新增 `--no-meta`：跳过 harness 注入的 [cmd]/[meta] user 块——单一旗标同盖两者（同源 `<command-*>` 文本），仅作用于 transcript，与 `--only` 叠加过滤；默认输出保持 verbatim。命中隐藏时尾部提示 `(N command/meta events hidden — remove --no-meta to show)`。
+- SKILL.md：claude-code 条目 Extras 补 `--no-meta`；评估流程第 3 步改为 `transcript --no-tools --no-meta`——skill 测试会话必然以 `/skill` 调用开场，[cmd]/[meta] 全文注入是结构性的（起因样本 3613b298 实测占 transcript 内容 56%）。
+- 起因度量（仅记录，不入 SKILL.md）：该样本源 .jsonl 53.0 万字符中 bookkeeping 43%、tool_result 15.5%、真人 user 3.6%，三视图切片合计约 5%——拆分价值锚定"按需切片 vs 整包 raw"，非视图间均衡。
+
+验证：
+
+- **3613b298**（4 个 harness 块）：默认 25 块、[cmd]/[meta] 头在、无提示；`--no-meta` 后 21 块、0 harness 头、提示 4 hidden；`--no-tools --no-meta` 重定向 34763→19013 字节（-45%）；`--only user --no-meta` 恰余 4 条真人 prompt。
+- **53772e58 回归**（0 harness 块）：12==12 块、无提示，正确 no-op；`get 8a449cc7`→#19、`grep skill` 9 命中，与 T4 基线一致。
+- **0f0f60dd**（T1 对象，0 harness 块）：5==5 块，无提示。
+
+已知边界（新增）：
+
+- `[Request interrupted by user]` 等中断提示以普通 user 文本记录（非 `isMeta`、不以 `<` 开头），`--no-meta` 不滤——沿用 `user`/`summary` 的既有判定谓词，保持三处口径一致。
+
+迁移门槛（本轮定案，待办）：完成一次真实评估 dogfood——五步评估流程完整评估一个真实 skill 测试会话（候选：flashcard-extract 首测）——走通且称手后移入 `skills/` 并记 CHANGELOG，此前留 `drafts/`。

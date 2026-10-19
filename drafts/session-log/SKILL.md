@@ -41,14 +41,14 @@ Common options: `--json` (NDJSON per record; `summary` emits one object), `--max
 - Stored at `~/.claude/projects/<munged-cwd>/<session-id>.jsonl` (Windows: `%USERPROFILE%\.claude\projects\...`). To find a session, list that directory yourself (newest first), then confirm with the user.
 - Recognized by: the path pattern above, or a file head of JSON lines carrying `"type":"user"|"assistant"|"summary"`, `message.id`, `sessionId`, `cwd`.
 - Aliases: claude code, claude-code, claude, cc.
-- Extras beyond the surface: `--sidechain` (subagent entries, hidden by default), `--thinking`, `--only <roles>`, `--full`; `get` also accepts `L<line>` and uuid prefix; grep also searches @-mentioned attachment bodies and compact-summary text; result sizes are UTF-8 bytes.
+- Extras beyond the surface: `--sidechain` (subagent entries, hidden by default), `--thinking`, `--only <roles>`, `--no-meta` (skip harness-injected [cmd]/[meta] user blocks, transcript only), `--full`; `get` also accepts `L<line>` and uuid prefix; grep also searches @-mentioned attachment bodies and compact-summary text; result sizes are UTF-8 bytes.
 - Format notes: assistant turns arrive as several jsonl lines sharing one `message.id` — merged into one message; every `tool_use` block is paired with its `tool_result`; bookkeeping entries (`mode`, `ai-title`, `file-history-snapshot`, …) are skipped; `type:"summary"` entries (compaction summaries, session-continuation chains) appear as `[compact-summary]` events, and `summary` reports their leaf uuids.
 
 ## Evaluation flow — analyzing a recorded session
 
 1. `summary` — how big, how many turns, which tools, what cost.
 2. `user` — what the human actually asked, and where they intervened.
-3. `transcript --no-tools` — the dialogue itself; add `--thinking` if the reasoning matters.
+3. `transcript --no-tools --no-meta` — the dialogue itself, harness-injected [cmd]/[meta] blocks skipped (in skill-test sessions they are duplicated skill text); add `--thinking` if the reasoning matters.
 4. `tools` / `usage` — behavioral fingerprint (what it read/wrote/asked) and token spend.
 5. `grep <term>` — every place the term surfaced: prompts, attachments, tool I/O.
 
