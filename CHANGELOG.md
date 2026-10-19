@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Graduation procedure (in `AGENTS.md`): codified from the grill-x and session-log
+  graduations — commit pending test-log changes first; one graduation commit moves
+  runtime files verbatim (100% rename), drops `_`-prefixed dirs wholesale, and records
+  the CHANGELOG entry plus any parked findings.
 - `session-log` skill (in `skills/session-log/`): parse any coding agent's recorded
   session log — `summary` / `transcript` / `user` / `tools` / `usage` / `get` / `grep`
   over an identical per-backend command surface (claude-code backend today) — with an
