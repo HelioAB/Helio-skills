@@ -1,0 +1,658 @@
+#!/usr/bin/env node
+// claude-code — session-log backend: parse Claude Code conversation-history .jsonl files.
+// Zero dependencies, Node >= 18. Usage overview: run without arguments.
+
+import fs from 'node:fs';
+
+// ---------- CLI ----------
+
+const USAGE = `claude-code — session-log backend: Claude Code conversation-history .jsonl
+
+usage: node claude-code.mjs <command> <file> [args] [options]
+
+commands:
+  summary              session overview: meta, timeline, counts, tools, tokens
+  transcript           readable conversation (merged turns, [compact-summary] lines)
+  user                 real user prompts only
+  tools                tool calls with brief input + result status
+  usage                token usage per assistant message + totals
+  get <ref>            full JSON of one entry; ref = event idx | L<line> | uuid prefix
+  grep <pattern>       regex search across text/thinking/tools/results/attachments
+
+options:
+  --sidechain          include isSidechain (subagent) entries; hidden by default
+  --thinking           include thinking blocks (transcript, grep)
+  --no-tools           hide tool call/result lines (transcript)
+  --only <list>        transcript roles: user,assistant,attachment,compact-summary
+                       (default user,assistant,compact-summary)
+  --full               user: print full prompt text instead of preview
+  --max-len <n>        truncate tool/thinking/attachment/summary strings, default 240
+  --json               NDJSON output (summary: single JSON object)
+  -i                   grep: case-insensitive`;
+
+const VALUE_FLAGS = ['--max-len', '--only'];
+
+function parseCli(argv) {
+  const flags = {};
+  const pos = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--max-len' || a === '--only') flags[a] = argv[++i];
+    else if (a.startsWith('--') || a === '-i') flags[a] = true;
+    else pos.push(a);
+  }
+  return {
+    pos,
+    maxLen: flags['--max-len'] ? Number(flags['--max-len']) : 240,
+    only: flags['--only'],
+    sidechain: !!flags['--sidechain'],
+    thinking: !!flags['--thinking'],
+    noTools: !!flags['--no-tools'],
+    full: !!flags['--full'],
+    json: !!flags['--json'],
+    i: !!flags['-i'],
+    help: !!flags['--help'],
+  };
+}
+
+function die(msg) {
+  console.error(`error: ${msg}`);
+  process.exit(1);
+}
+
+// ---------- helpers ----------
+
+const pad2 = (x) => String(x).padStart(2, '0');
+
+function trunc(s, n) {
+  s = String(s ?? '');
+  return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
+const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+
+function fmtTs(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '?';
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+function fmtDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '?';
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${fmtTs(iso)}`;
+}
+
+function fmtDur(ms) {
+  if (!(ms >= 0)) return '?';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h${m % 60}m`;
+}
+
+function fmtBytes(n) {
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+  return `${(n / 1024 / 1024).toFixed(1)}MB`;
+}
+
+function fmtTok(n) {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e4) return `${Math.round(n / 1e3)}k`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
+  return String(n);
+}
+
+const num = (n) => (n ?? 0).toLocaleString('en-US');
+
+// ---------- loading ----------
+
+function loadEntries(file) {
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    die(`cannot read ${file}: ${e.message}`);
+  }
+  const entries = [];
+  raw.split(/\r?\n/).forEach((l, i) => {
+    if (!l.trim()) return;
+    try {
+      entries.push({ line: i + 1, ...JSON.parse(l) });
+    } catch (e) {
+      entries.push({ line: i + 1, parseError: e.message });
+    }
+  });
+  return { raw, entries };
+}
+
+// Assistant turns arrive as several jsonl lines sharing one message.id, each
+// line carrying only its new content block(s) (some older formats repeat all
+// blocks cumulatively — mergeBlocks handles both).
+function mergeBlocks(group, blocks) {
+  if (!blocks.length) return;
+  if (!group.blocks.length) {
+    group.blocks = [...blocks];
+    return;
+  }
+  const sameFirst =
+    JSON.stringify(blocks[0]) === JSON.stringify(group.blocks[0]);
+  if (sameFirst && blocks.length >= group.blocks.length) group.blocks = blocks;
+  else group.blocks.push(...blocks);
+}
+
+function resultText(c) {
+  if (typeof c === 'string') return c;
+  if (Array.isArray(c))
+    return c.map((b) => (b.type === 'text' ? b.text : `[${b.type}]`)).join('\n');
+  return c == null ? '' : JSON.stringify(c);
+}
+
+// Turn flat entries into an ordered event list:
+//   user (text) · tool-result · assistant (merged) · attachment · compact-summary
+// type:"summary" entries (compaction summaries, session-continuation chains)
+// become compact-summary events. Other bookkeeping entries (mode, ai-title,
+// file-history-snapshot, …) are skipped; summary reports them from raw entries.
+function buildEvents(entries) {
+  const events = [];
+  const groups = new Map();
+  for (const e of entries) {
+    const base = {
+      line: e.line,
+      ts: e.timestamp,
+      uuid: e.uuid,
+      sidechain: !!e.isSidechain,
+    };
+    if (e.parseError) {
+      events.push({ idx: events.length, kind: 'parse-error', error: e.parseError, ...base });
+      continue;
+    }
+    if (e.type === 'user') {
+      const content = e.message?.content;
+      if (typeof content === 'string') {
+        events.push({
+          idx: events.length,
+          kind: 'user',
+          text: content,
+          isMeta: !!e.isMeta,
+          isCommand: content.trimStart().startsWith('<'),
+          ...base,
+        });
+      } else if (Array.isArray(content)) {
+        for (const b of content) {
+          if (b.type === 'tool_result') {
+            events.push({
+              idx: events.length,
+              kind: 'tool-result',
+              toolUseId: b.tool_use_id,
+              isError: !!b.is_error,
+              text: resultText(b.content),
+              ...base,
+            });
+          } else if (b.type === 'text' && b.text) {
+            events.push({
+              idx: events.length,
+              kind: 'user',
+              text: b.text,
+              isMeta: !!e.isMeta,
+              isCommand: b.text.trimStart().startsWith('<'),
+              ...base,
+            });
+          }
+        }
+      }
+    } else if (e.type === 'assistant') {
+      const id = e.message?.id || e.uuid;
+      let g = groups.get(id);
+      if (!g) {
+        g = {
+          idx: events.length,
+          kind: 'assistant',
+          model: e.message?.model,
+          messageId: id,
+          blocks: [],
+          usage: null,
+          lineLast: e.line,
+          ...base,
+        };
+        groups.set(id, g);
+        events.push(g);
+      }
+      mergeBlocks(g, e.message?.content || []);
+      if (e.message?.usage) g.usage = e.message.usage;
+      g.lineLast = e.line;
+    } else if (e.type === 'attachment') {
+      const a = e.attachment || {};
+      // Keep @-mentioned file bodies searchable; cap so huge dumps stay sane.
+      let body = '';
+      if (a.type === 'file' && typeof a.content?.file?.content === 'string')
+        body = a.content.file.content.slice(0, 500 * 1024);
+      events.push({
+        idx: events.length,
+        kind: 'attachment',
+        sub: a.type,
+        name: a.filename || a.hookName || a.toolName || '',
+        body,
+        ...base,
+      });
+    } else if (e.type === 'summary') {
+      events.push({
+        idx: events.length,
+        kind: 'compact-summary',
+        text: e.summary || '',
+        leafUuid: e.leafUuid,
+        ...base,
+      });
+    }
+  }
+  return events;
+}
+
+// Pair each assistant tool_use block with its tool-result event.
+function pairTools(events) {
+  const map = new Map();
+  for (const ev of events) {
+    if (ev.kind === 'assistant') {
+      for (const b of ev.blocks)
+        if (b.type === 'tool_use') map.set(b.id, { call: ev, block: b });
+    } else if (ev.kind === 'tool-result' && map.has(ev.toolUseId)) {
+      const p = map.get(ev.toolUseId);
+      p.result = ev;
+    }
+  }
+  return map;
+}
+
+function toolBrief(input) {
+  const i = input || {};
+  if (Array.isArray(i.questions))
+    return i.questions.map((q) => q?.question || '').filter(Boolean).join(' | ');
+  for (const k of [
+    'file_path', 'path', 'notebook_path', 'command', 'cmd', 'pattern',
+    'query', 'url', 'skill', 'prompt', 'description', 'script', 'agent_type',
+  ]) {
+    if (typeof i[k] === 'string' && i[k]) return i[k];
+  }
+  const j = JSON.stringify(i);
+  return j === '{}' ? '' : j;
+}
+
+function header(ev, extra = '') {
+  const tags = [ev.sidechain && 'side', ev.isMeta && 'meta', ev.isCommand && 'cmd']
+    .filter(Boolean)
+    .join(',');
+  const label =
+    ev.kind === 'assistant' ? `assistant ${ev.model || ''}`.trim() : ev.kind;
+  const t = tags ? ` [${tags}]` : '';
+  const x = extra ? ` · ${extra}` : '';
+  return `── #${ev.idx} ${label}${t} · ${fmtTs(ev.ts)}${x} `.padEnd(72, '─');
+}
+
+function visible(ev, opts) {
+  if (!opts.sidechain && ev.sidechain) return false;
+  return true;
+}
+
+function sumUsage(list) {
+  const t = { msgs: 0, input: 0, cacheRead: 0, cacheCreate: 0, output: 0 };
+  for (const g of list) {
+    const u = g.usage;
+    if (!u) continue;
+    t.msgs++;
+    t.input += u.input_tokens || 0;
+    t.cacheRead += u.cache_read_input_tokens || 0;
+    t.cacheCreate += u.cache_creation_input_tokens || 0;
+    t.output += u.output_tokens || 0;
+  }
+  return t;
+}
+
+// ---------- commands ----------
+
+function cmdSummary(file, opts) {
+  const { raw, entries } = loadEntries(file);
+  const events = buildEvents(entries);
+
+  const typeCounts = {};
+  for (const e of entries) {
+    if (e.parseError) continue;
+    const t = e.type || '(none)';
+    typeCounts[t] = (typeCounts[t] || 0) + 1;
+  }
+  const parseErrors = entries.filter((e) => e.parseError).length;
+
+  const stamps = entries.filter((e) => e.timestamp).map((e) => e.timestamp);
+  const first = stamps[0];
+  const last = stamps[stamps.length - 1];
+
+  const sessionIds = [...new Set(entries.map((e) => e.sessionId).filter(Boolean))];
+  const versions = [...new Set(entries.map((e) => e.version).filter(Boolean))];
+  const branches = [...new Set(entries.map((e) => e.gitBranch).filter(Boolean))];
+  const cwds = [...new Set(entries.map((e) => e.cwd).filter(Boolean))];
+  const title = [...entries.filter((e) => e.type === 'ai-title')].pop()?.aiTitle;
+  const summaries = entries.filter((e) => e.type === 'summary');
+  const leaves = summaries.map((e) => e.leafUuid).filter(Boolean);
+
+  const shown = events.filter((ev) => visible(ev, opts));
+  const prompts = shown.filter((e) => e.kind === 'user' && !e.isCommand && !e.isMeta);
+  const cmds = shown.filter((e) => e.kind === 'user' && (e.isCommand || e.isMeta));
+  const assistants = shown.filter((e) => e.kind === 'assistant');
+  const sideHidden = events.filter((e) => e.sidechain).length;
+
+  const toolPairs = [...pairTools(events).values()];
+  const toolHist = {};
+  let toolErrors = 0;
+  for (const p of toolPairs) {
+    toolHist[p.block.name] = (toolHist[p.block.name] || 0) + 1;
+    if (p.result?.isError) toolErrors++;
+  }
+  const attachHist = {};
+  for (const ev of shown)
+    if (ev.kind === 'attachment') attachHist[ev.sub] = (attachHist[ev.sub] || 0) + 1;
+
+  const byModel = {};
+  for (const g of assistants) {
+    const m = g.model || '?';
+    byModel[m] = byModel[m] || { msgs: 0, ...{ input: 0, cacheRead: 0, cacheCreate: 0, output: 0, msgs: 0 } };
+    const u = g.usage;
+    byModel[m].msgs++;
+    if (u) {
+      byModel[m].input += u.input_tokens || 0;
+      byModel[m].cacheRead += u.cache_read_input_tokens || 0;
+      byModel[m].cacheCreate += u.cache_creation_input_tokens || 0;
+      byModel[m].output += u.output_tokens || 0;
+    }
+  }
+
+  const out = {
+    file: { path: file, bytes: Buffer.byteLength(raw), lines: entries.length, parseErrors },
+    session: {
+      sessionIds, versions, gitBranches: branches, cwds,
+      aiTitle: title || null,
+      compactSummaries: summaries.length,
+      continuesFrom: leaves,
+      start: first || null,
+      end: last || null,
+      durationMs: first && last ? new Date(last) - new Date(first) : null,
+    },
+    entryTypes: typeCounts,
+    conversation: {
+      userPrompts: prompts.length,
+      commandOrMeta: cmds.length,
+      assistantMessages: assistants.length,
+      sidechainEventsHidden: sideHidden,
+      toolCalls: toolPairs.length,
+      toolErrors,
+      toolHistogram: toolHist,
+      attachments: attachHist,
+    },
+    usageByModel: byModel,
+  };
+
+  if (opts.json) {
+    console.log(JSON.stringify(out));
+    return;
+  }
+
+  const kv = (k, v) => console.log(`${k.padEnd(8)}${v}`);
+  const { bytes, lines } = out.file;
+  kv('file', `${file} (${fmtBytes(bytes)}, ${lines} lines${parseErrors ? `, ${parseErrors} parse errors` : ''})`);
+  kv('session', sessionIds.join(', ') || '?');
+  if (versions.length) kv('version', versions.join(', '));
+  if (branches.length) kv('branch', branches.join(', '));
+  if (title) kv('title', title);
+  if (cwds.length) kv('cwd', cwds.join(' | '));
+  kv('time', `${fmtDate(first)} → ${fmtDate(last)} (${fmtDur(new Date(last) - new Date(first))})`);
+  kv('entries', Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).map(([t, c]) => `${t} ${c}`).join(' · '));
+  if (summaries.length)
+    kv('compact', `${summaries.length} summar${summaries.length > 1 ? 'ies' : 'y'}${leaves.length ? ` · continues ${leaves.map((l) => String(l).slice(0, 8)).join(', ')}` : ''}`);
+  const c = out.conversation;
+  kv('turns', `${c.userPrompts} user prompts${c.commandOrMeta ? ` (+${c.commandOrMeta} command/meta)` : ''} · ${c.assistantMessages} assistant messages${sideHidden ? ` · ${sideHidden} sidechain events hidden` : ''}`);
+  kv('tools', `${c.toolCalls} calls${c.toolErrors ? `, ${c.toolErrors} errors` : ''}` + (Object.keys(toolHist).length ? ' · ' + Object.entries(toolHist).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}`).join(' · ') : ''));
+  if (Object.keys(attachHist).length)
+    kv('attach', Object.entries(attachHist).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}`).join(' · '));
+  for (const [m, u] of Object.entries(byModel)) {
+    kv('tokens', `${m}: ${u.msgs} msgs · in ${fmtTok(u.input)} · cache-read ${fmtTok(u.cacheRead)} · cache-create ${fmtTok(u.cacheCreate)} · out ${fmtTok(u.output)}`);
+  }
+}
+
+function cmdTranscript(file, opts) {
+  const { entries } = loadEntries(file);
+  const events = buildEvents(entries);
+  const tools = pairTools(events);
+  const only = new Set(
+    (opts.only || 'user,assistant,compact-summary').split(',').map((s) => s.trim()).filter(Boolean)
+  );
+  let hiddenSide = 0;
+  for (const ev of events) {
+    if (ev.sidechain && !opts.sidechain) { hiddenSide++; continue; }
+    if (ev.kind === 'parse-error') { console.log(header(ev, `PARSE ERROR: ${ev.error}`)); continue; }
+    if (!only.has(roleKey(ev))) continue;
+    printEvent(ev, opts, tools);
+  }
+  if (hiddenSide) console.log(`\n(${hiddenSide} sidechain events hidden — use --sidechain)`);
+}
+
+function roleKey(ev) {
+  if (ev.kind === 'user' || ev.kind === 'tool-result' || ev.kind === 'assistant') {
+    // tool-result prints attached to its assistant call, so route it there
+    return ev.kind === 'tool-result' ? 'assistant' : ev.kind;
+  }
+  return ev.kind;
+}
+
+function printEvent(ev, opts, tools) {
+  const ml = opts.maxLen;
+  if (ev.kind === 'user') {
+    console.log(header(ev));
+    console.log(ev.text);
+    console.log();
+  } else if (ev.kind === 'assistant') {
+    console.log(header(ev, `L${ev.line}-${ev.lineLast}`));
+    for (const b of ev.blocks) {
+      if (b.type === 'text' && b.text) console.log(b.text);
+      else if (b.type === 'thinking' && opts.thinking)
+        console.log(`  [thinking] ${trunc(oneLine(b.thinking), ml)}`);
+      else if (b.type === 'tool_use' && !opts.noTools) {
+        console.log(`  → ${b.name}  ${trunc(oneLine(toolBrief(b.input)), ml)}`);
+        const p = tools.get(b.id);
+        if (p?.result) {
+          const r = p.result;
+          if (r.isError) console.log(`  ← ERROR ${trunc(oneLine(r.text.replace(/^<tool_use_error>\s*/, '')), ml)}`);
+          else if (r.text) console.log(`  ← ${fmtBytes(Buffer.byteLength(r.text))}`);
+        } else if (!opts.noTools) console.log('  ← (no result)');
+      }
+    }
+    console.log();
+  } else if (ev.kind === 'attachment') {
+    console.log(header(ev, `${ev.sub}${ev.name ? ` · ${ev.name}` : ''}${ev.body ? ` · ${fmtBytes(Buffer.byteLength(ev.body))} body` : ''}`));
+    console.log();
+  } else if (ev.kind === 'compact-summary') {
+    console.log(header(ev, ev.leafUuid ? `continues ${String(ev.leafUuid).slice(0, 8)}` : ''));
+    console.log(trunc(oneLine(ev.text), ml));
+    console.log();
+  }
+}
+
+function cmdUser(file, opts) {
+  const { entries } = loadEntries(file);
+  const events = buildEvents(entries);
+  for (const ev of events) {
+    if (ev.kind !== 'user' || !visible(ev, opts)) continue;
+    const tags = [ev.sidechain && 'side', ev.isMeta && 'meta', ev.isCommand && 'cmd'].filter(Boolean);
+    if (opts.json) {
+      console.log(JSON.stringify({ idx: ev.idx, ts: ev.ts, tags, text: ev.text }));
+    } else if (opts.full) {
+      console.log(header(ev));
+      console.log(ev.text);
+      console.log();
+    } else {
+      const t = tags.length ? ` [${tags.join(',')}]` : '';
+      console.log(`#${String(ev.idx).padEnd(5)} ${fmtTs(ev.ts)} ${oneLine(ev.text).slice(0, 100)}${t}`);
+    }
+  }
+}
+
+function cmdTools(file, opts) {
+  const { entries } = loadEntries(file);
+  const events = buildEvents(entries);
+  const tools = pairTools(events);
+  const rows = [];
+  for (const [id, p] of tools) {
+    const ev = p.call;
+    if (!visible(ev, opts)) continue;
+    rows.push({
+      idx: ev.idx,
+      ts: ev.ts,
+      name: p.block.name,
+      input: toolBrief(p.block.input),
+      isError: !!p.result?.isError,
+      resultBytes: p.result ? Buffer.byteLength(p.result.text) : null,
+      errorText: p.result?.isError ? p.result.text : undefined,
+      hasResult: !!p.result,
+      line: ev.line,
+      toolUseId: id,
+    });
+  }
+  rows.sort((a, b) => a.idx - b.idx);
+  if (opts.json) {
+    for (const r of rows) console.log(JSON.stringify(r));
+    return;
+  }
+  for (const r of rows) {
+    const status = !r.hasResult ? '(no result)'
+      : r.isError ? `ERROR ${trunc(oneLine(String(r.errorText).replace(/^<tool_use_error>\s*/, '')), 120)}`
+      : r.resultBytes == null ? '' : fmtBytes(r.resultBytes);
+    console.log(
+      `#${String(r.idx).padEnd(5)} ${fmtTs(r.ts)} ${r.name.padEnd(12)} ${trunc(oneLine(r.input), 100)}`
+    );
+    console.log(`${' '.repeat(21)}← ${status}`);
+  }
+  console.log(`\ntotal: ${rows.length} calls, ${rows.filter((r) => r.isError).length} errors`);
+}
+
+function cmdUsage(file, opts) {
+  const { entries } = loadEntries(file);
+  const events = buildEvents(entries);
+  const assistants = events.filter((e) => e.kind === 'assistant' && visible(e, opts));
+  if (opts.json) {
+    for (const g of assistants)
+      console.log(JSON.stringify({ idx: g.idx, ts: g.ts, model: g.model, usage: g.usage }));
+  }
+  for (const g of assistants) {
+    const u = g.usage || {};
+    console.log(
+      `#${String(g.idx).padEnd(5)} ${fmtTs(g.ts)} ${(g.model || '?').padEnd(10)} in ${num(u.input_tokens)} · cache-r ${num(u.cache_read_input_tokens)} · out ${num(u.output_tokens)}`
+    );
+  }
+  const t = sumUsage(assistants);
+  console.log(
+    `\ntotal: ${t.msgs} msgs · input ${fmtTok(t.input)} · cache-read ${fmtTok(t.cacheRead)} · cache-create ${fmtTok(t.cacheCreate)} · output ${fmtTok(t.output)}`
+  );
+}
+
+function cmdGet(file, ref, opts) {
+  const { entries } = loadEntries(file);
+  const events = buildEvents(entries);
+  let ev = null;
+  let rawEntry = null;
+  if (/^\d+$/.test(ref)) {
+    ev = events[Number(ref)];
+    if (!ev) die(`no event #${ref} (events: 0..${events.length - 1})`);
+  } else if (/^L\d+$/i.test(ref)) {
+    const n = Number(ref.slice(1));
+    rawEntry = entries.find((e) => e.line === n);
+    if (!rawEntry) die(`no line ${n} (file has ${entries.length} lines)`);
+  } else {
+    const lower = ref.toLowerCase();
+    ev = events.find((e) => e.uuid?.toLowerCase().startsWith(lower));
+    if (!ev) rawEntry = entries.find((e) => e.uuid?.toLowerCase().startsWith(lower));
+    if (!ev && !rawEntry) die(`no uuid matching prefix "${ref}"`);
+  }
+  if (rawEntry) {
+    console.log(JSON.stringify(rawEntry, null, 2));
+    return;
+  }
+  // assistant events are merged views; show the merged shape plus raw line refs
+  const view = { ...ev };
+  delete view.call;
+  console.log(JSON.stringify(view, null, 2));
+}
+
+function cmdGrep(file, pattern, opts) {
+  let re;
+  try {
+    re = new RegExp(pattern, opts.i ? 'gi' : 'g');
+  } catch {
+    re = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), opts.i ? 'gi' : 'g');
+  }
+  const { entries } = loadEntries(file);
+  const events = buildEvents(entries);
+  const tools = pairTools(events);
+  let hits = 0;
+  for (const ev of events) {
+    if (!visible(ev, opts) || ev.kind === 'parse-error') continue;
+    const parts = [];
+    if (ev.kind === 'user') parts.push(ev.text);
+    else if (ev.kind === 'compact-summary') parts.push(ev.text);
+    else if (ev.kind === 'attachment') { if (ev.body) parts.push(ev.body); if (ev.name) parts.push(ev.name); }
+    else if (ev.kind === 'assistant') {
+      for (const b of ev.blocks) {
+        if (b.type === 'text' && b.text) parts.push(b.text);
+        else if (b.type === 'thinking' && opts.thinking) parts.push(b.thinking || '');
+        else if (b.type === 'tool_use') parts.push(`${b.name} ${JSON.stringify(b.input)}`);
+      }
+    }
+    if (ev.kind === 'tool-result') parts.push(ev.text);
+    for (const s of parts) {
+      re.lastIndex = 0;
+      const m = re.exec(String(s));
+      if (!m) continue;
+      const at = m.index;
+      const ctx =
+        oneLine(s.slice(Math.max(0, at - 40), at)) +
+        '⟦' + oneLine(m[0]) + '⟧' +
+        oneLine(s.slice(at + m[0].length, at + m[0].length + 80));
+      console.log(`#${String(ev.idx).padEnd(5)} ${ev.kind.padEnd(11)} ${ctx}`);
+      hits++;
+      break; // one line per event
+    }
+  }
+  if (!hits) console.error('(no matches)');
+}
+
+// ---------- main ----------
+
+const { pos, ...opts } = parseCli(process.argv.slice(2));
+const [cmd, file] = pos;
+
+if (!cmd || cmd === 'help' || opts.help) {
+  console.log(USAGE);
+  process.exit(cmd ? 0 : 1);
+}
+if (!file) die(`missing <file> — see "help"`);
+if (!['summary', 'transcript', 'user', 'tools', 'usage', 'get', 'grep'].includes(cmd))
+  die(`unknown command "${cmd}" — see "help"`);
+
+switch (cmd) {
+  case 'summary': cmdSummary(file, opts); break;
+  case 'transcript': cmdTranscript(file, opts); break;
+  case 'user': cmdUser(file, opts); break;
+  case 'tools': cmdTools(file, opts); break;
+  case 'usage': cmdUsage(file, opts); break;
+  case 'get': {
+    const ref = pos[2];
+    if (!ref) die('get needs a ref: event idx | L<line> | uuid prefix');
+    cmdGet(file, ref, opts);
+    break;
+  }
+  case 'grep': {
+    const pattern = pos.slice(2).join(' ');
+    if (!pattern) die('grep needs a pattern');
+    cmdGrep(file, pattern, opts);
+    break;
+  }
+}
