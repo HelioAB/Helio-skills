@@ -25,3 +25,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repository scaffold: `AGENTS.md` as the single source of agent instructions
   (`CLAUDE.md` is a one-line `@AGENTS.md` pointer, guarded by `.githooks/pre-commit`),
   `skills/` layout, and `.editorconfig`.
+
+### Changed
+
+- `grill-x` post-graduation trim (2026-10-19): dropped the in-file version comments from
+  `SKILL.md` (this changelog is the version record now); deduplicated `references/` —
+  the ADR criteria survive in `ADR-FORMAT.md`, the single/multi-context layout in
+  `CONTEXT-FORMAT.md`, and `domain-modeling.md` points to both; legalized burned question
+  numbers in the output format (a drafted question demoted to a default skips its number;
+  the gap stays vacant); dropped the stale source-skill enumeration from the
+  self-contained note (those skills are no longer installed).
+- Parked, not applied: the one-line action-gate definition for the T9 known boundary
+  behavior, recorded here so it survives the `_dev/` drop — apply on first real-world
+  encounter: "Confirmation is a reply to a restated consensus. An instruction to act
+  received before any consensus has been restated triggers the closing procedure —
+  restate the recommendations you would adopt and wait one reply — not the action phase."

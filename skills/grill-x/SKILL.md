@@ -5,7 +5,7 @@ description: Grill the user relentlessly about a plan, decision, or idea. The "d
 
 # Grill-X — personal edition
 
-A relentless interview to sharpen a plan or design. This directory is the complete, self-contained skill: do not call, load, or route to any other skill (grilling, grill-me, grill-with-docs, domain-modeling, or anything else).
+A relentless interview to sharpen a plan or design. This directory is the complete, self-contained skill: do not call, load, or route to any other skill.
 
 ## Protocol
 
@@ -21,7 +21,7 @@ The session is done when the frontier is empty: every branch of the design tree 
 
 ## Output format
 
-Each question is one self-contained block. In a round with multiple questions, number the blocks Q1, Q2, … and separate blocks with a horizontal rule (`---`). Numbering is session-wide: it continues across rounds (round 2 starts at Q7 if round 1 ended at Q6) and a number is never reused, so a bare Q-number identifies one question anywhere later in the session — in later rounds' backgrounds and in the closing consensus. Render each block exactly like this:
+Each question is one self-contained block. In a round with multiple questions, number the blocks Q1, Q2, … and separate blocks with a horizontal rule (`---`). Numbering is session-wide: it continues across rounds (round 2 starts at Q7 if round 1 ended at Q6) and a number is never reused, so a bare Q-number identifies one question anywhere later in the session — in later rounds' backgrounds and in the closing consensus. If a drafted question collapses into a default instead of being printed, its number burns: the sequence skips the gap (Q6 → Q8) and never backfills it. A gap is harmless — a bare Q-number still names exactly one printed question. Render each block exactly like this:
 
 ```md
 **Q1 - <question title>**
@@ -53,7 +53,3 @@ In docs mode the round loop gains a write step. Whenever something newly settles
 Docs mode touches exactly two kinds of files: CONTEXT.md and `docs/adr/*.md`. Files already present in the directory — plans, logs, notes from this or other topics — are evidence to mine for facts and contradictions, never templates to imitate: do not create, extend, or mirror any other document on their model. Anything beyond the two files belongs to the action phase and waits for confirmed consensus.
 
 When the working directory is itself a project's root — it holds one coherent source tree with its manifests and README — CONTEXT.md and `docs/adr/` sit at that root. Otherwise (a bare topic folder, or a folder collecting files from several topics), both paths live inside one subdirectory named after the topic: create it at the first write and state its location then. Judge this from what the directory itself contains, not from ambient git status — it can describe a different directory. A location the user names always overrides either default.
-
-<!-- v1, 2026-10-09: Initial personal edition. Docs discipline and the two format files live in references/. To iterate, edit the files in this directory directly. -->
-<!-- v2, 2026-10-15: Docs mode rewritten — writes happen per round inside the loop, never batched to the end; docs output is the closed set CONTEXT.md + docs/adr/*.md (existing files are evidence, not templates); outside a repo, writes go to a topic-named subdirectory unless the user names a location. Protocol closing adds a consensus-faithfulness rule. Template annotations anglicized. -->
-<!-- v3, 2026-10-17: Question numbering is session-wide — continues across rounds, never reuses a number. Trivial reversible details become numbered defaults (veto window, restated in the closing consensus); anything hard to reverse, scope-changing, or surprising stays a question block. The docs write step runs first in its turn, before fact-finding, and nothing is reported written before its write runs. Write location is judged from the directory's own contents (project root vs bare/multi-topic folder), not from ambient git status. -->
