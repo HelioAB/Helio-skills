@@ -25,7 +25,10 @@ options:
   --sidechain          include isSidechain (subagent) entries; hidden by default
   --thinking           include thinking blocks (transcript, grep)
   --no-tools           hide tool call/result lines (transcript)
-  --no-meta            hide harness-injected [cmd]/[meta] user blocks (transcript)
+  --no-meta            hide harness-injected [meta] skill bodies (transcript)
+  --no-cmd             hide harness command entries (transcript)
+  --include-current    include the current invocation when the target is the
+                       current session (by default the trailing turn is cut)
   --only <list>        transcript roles: user,assistant,attachment,compact-summary
                        (default user,assistant,compact-summary)
   --full               user: print full prompt text instead of preview
@@ -39,7 +42,8 @@ locator:
                        \$CLAUDE_CODE_SESSION_ID →
                        \${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<munged-cwd>/<id>.jsonl
                        (fallbacks: id search across project dirs, newest-file
-                       heuristic); the resolution note goes to stderr`;
+                       heuristic); parses of it exclude the current invocation
+                       by default; the resolution note goes to stderr`;
 
 const VALUE_FLAGS = ['--max-len', '--only'];
 
@@ -60,6 +64,8 @@ function parseCli(argv) {
     thinking: !!flags['--thinking'],
     noTools: !!flags['--no-tools'],
     noMeta: !!flags['--no-meta'],
+    noCmd: !!flags['--no-cmd'],
+    includeCurrent: !!flags['--include-current'],
     full: !!flags['--full'],
     json: !!flags['--json'],
     i: !!flags['-i'],
@@ -150,7 +156,7 @@ function jsonlFiles(dir) {
     .sort((a, b) => b.mtime - a.mtime);
 }
 
-function resolveCurrent() {
+function resolveCurrentInfo({ quiet = false } = {}) {
   const home = process.env.USERPROFILE || process.env.HOME || os.homedir();
   const root = path.join(
     process.env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'),
@@ -159,7 +165,10 @@ function resolveCurrent() {
   const munge = (p) => p.replace(/[^A-Za-z0-9]/g, '-');
   const id = process.env.CLAUDE_CODE_SESSION_ID;
   const dirByCwd = path.join(root, munge(process.cwd()));
-  const note = (file, via) => console.error(`current → ${file} (via ${via})`);
+  const note = (file, via) => {
+    if (!quiet) console.error(`current → ${file} (via ${via})`);
+    return { file, via };
+  };
 
   if (id) {
     const direct = path.join(dirByCwd, `${id}.jsonl`);
@@ -169,12 +178,11 @@ function resolveCurrent() {
       // the same directory was written within the freshness window, trust that.
       const top = jsonlFiles(dirByCwd)[0];
       if (top && path.resolve(top.p) !== path.resolve(direct) && Date.now() - top.mtime < FRESH_MS) {
-        console.error(`warning: env session id resolves to a file that is not the newest; using ${top.p}`);
-        note(top.p, 'newest, env id stale');
-        return top.p;
+        if (!quiet)
+          console.error(`warning: env session id resolves to a file that is not the newest; using ${top.p}`);
+        return note(top.p, 'newest, env id stale');
       }
-      note(direct, 'env id');
-      return direct;
+      return note(direct, 'env id');
     }
     // Derived path missing (different cwd, >200-char munged name, config dir
     // mismatch): search every project dir for the id's file name.
@@ -185,37 +193,116 @@ function resolveCurrent() {
     }
     if (hits.length) {
       hits.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-      if (hits.length > 1)
+      if (hits.length > 1 && !quiet)
         console.error(`warning: session id matches ${hits.length} files; using the newest`);
-      note(hits[0], 'id search');
-      return hits[0];
+      return note(hits[0], 'id search');
     }
   } else {
     const top = jsonlFiles(dirByCwd)[0];
-    if (top) {
-      note(top.p, 'heuristic: newest in munged cwd, no CLAUDE_CODE_SESSION_ID');
-      return top.p;
-    }
+    if (top) return note(top.p, 'heuristic: newest in munged cwd, no CLAUDE_CODE_SESSION_ID');
   }
 
-  console.error('error: cannot resolve the current session');
-  console.error(
-    id
-      ? `  ($CLAUDE_CODE_SESSION_ID=${id} has no .jsonl under ${root}; session persistence may be disabled)`
-      : '  (no $CLAUDE_CODE_SESSION_ID and no .jsonl in the munged-cwd project dir)'
+  if (!quiet) {
+    console.error('error: cannot resolve the current session');
+    console.error(
+      id
+        ? `  ($CLAUDE_CODE_SESSION_ID=${id} has no .jsonl under ${root}; session persistence may be disabled)`
+        : '  (no $CLAUDE_CODE_SESSION_ID and no .jsonl in the munged-cwd project dir)'
+    );
+    const pool = jsonlFiles(dirByCwd);
+    if (!pool.length && fs.existsSync(root)) {
+      for (const d of fs.readdirSync(root))
+        for (const f of jsonlFiles(path.join(root, d))) pool.push(f);
+      pool.sort((a, b) => b.mtime - a.mtime);
+    }
+    if (pool.length) {
+      console.error('  candidates (newest first):');
+      for (const c of pool.slice(0, 5))
+        console.error(`    ${c.p}  ${fmtDate(new Date(c.mtime).toISOString())}  ${fmtBytes(c.size)}`);
+    }
+  }
+  return null;
+}
+
+function resolveCurrent() {
+  const info = resolveCurrentInfo();
+  if (!info) process.exit(1);
+  return info.file;
+}
+
+function sameFile(a, b) {
+  let ra = a;
+  let rb = b;
+  try { ra = fs.realpathSync.native(a); } catch {}
+  try { rb = fs.realpathSync.native(b); } catch {}
+  ra = path.resolve(ra);
+  rb = path.resolve(rb);
+  return process.platform === 'win32' ? ra.toLowerCase() === rb.toLowerCase() : ra === rb;
+}
+
+// An explicit path counts as the current session only when it matches a
+// resolution backed by the session id. The env-less newest-file heuristic is
+// too weak to justify trimming, so it fails open: at worst extra content stays.
+function isCurrentSessionFile(file) {
+  const info = resolveCurrentInfo({ quiet: true });
+  if (!info || info.via.startsWith('heuristic')) return false;
+  return sameFile(info.file, file);
+}
+
+// ---------- current-invocation boundary ----------
+
+// The current invocation opens at the user entry from which the ongoing turn
+// started. Anchor on the latest assistant call to this skill's scripts (the
+// call being served is already recorded when the script runs), then walk back.
+// The fallback is the last ordinary user entry.
+function toolInvokesSkill(e) {
+  if (e.isSidechain || e.type !== 'assistant' || !Array.isArray(e.message?.content)) return false;
+  return e.message.content.some(
+    (b) =>
+      b.type === 'tool_use' &&
+      b.name === 'Bash' &&
+      typeof b.input?.command === 'string' &&
+      /(?:claude-code|export)\.mjs\b/.test(b.input.command)
   );
-  const pool = jsonlFiles(dirByCwd);
-  if (!pool.length && fs.existsSync(root)) {
-    for (const d of fs.readdirSync(root))
-      for (const f of jsonlFiles(path.join(root, d))) pool.push(f);
-    pool.sort((a, b) => b.mtime - a.mtime);
+}
+
+function opensUserTurn(e) {
+  if (e.isSidechain || e.parseError || e.type !== 'user' || e.isMeta) return false;
+  const c = e.message?.content;
+  if (typeof c === 'string') return true;
+  if (Array.isArray(c)) return c.some((b) => b.type === 'text' && b.text);
+  return false;
+}
+
+function findInvocationStartLine(entries) {
+  let anchor = -1;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    if (toolInvokesSkill(entries[i])) {
+      anchor = i;
+      break;
+    }
   }
-  if (pool.length) {
-    console.error('  candidates (newest first):');
-    for (const c of pool.slice(0, 5))
-      console.error(`    ${c.p}  ${fmtDate(new Date(c.mtime).toISOString())}  ${fmtBytes(c.size)}`);
+  for (let i = anchor === -1 ? entries.length - 1 : anchor - 1; i >= 0; i--) {
+    if (opensUserTurn(entries[i])) return entries[i].line;
   }
-  process.exit(1);
+  return null;
+}
+
+// Load one view. Parsing the current session excludes the ongoing invocation by
+// default: a suffix cut at the invocation's opening user entry, which keeps
+// every retained event idx and line reference valid. --include-current opts out.
+function loadView(file, opts) {
+  const { raw, entries: all } = loadEntries(file);
+  let entries = all;
+  if (opts.treatAsCurrent && !opts.includeCurrent) {
+    const cutLine = findInvocationStartLine(all);
+    if (cutLine != null) {
+      const at = all.findIndex((e) => e.line >= cutLine);
+      entries = at < 0 ? all : all.slice(0, at);
+      console.error(`current invocation excluded from L${cutLine} — pass --include-current to include it`);
+    }
+  }
+  return { raw, entries, all, rawLineCount: all.length };
 }
 
 // ---------- loading ----------
@@ -423,7 +510,7 @@ function sumUsage(list) {
 // ---------- commands ----------
 
 function cmdSummary(file, opts) {
-  const { raw, entries } = loadEntries(file);
+  const { raw, entries, all, rawLineCount } = loadView(file, opts);
   const events = buildEvents(entries);
 
   const typeCounts = {};
@@ -432,17 +519,17 @@ function cmdSummary(file, opts) {
     const t = e.type || '(none)';
     typeCounts[t] = (typeCounts[t] || 0) + 1;
   }
-  const parseErrors = entries.filter((e) => e.parseError).length;
+  const parseErrors = all.filter((e) => e.parseError).length;
 
   const stamps = entries.filter((e) => e.timestamp).map((e) => e.timestamp);
   const first = stamps[0];
   const last = stamps[stamps.length - 1];
 
-  const sessionIds = [...new Set(entries.map((e) => e.sessionId).filter(Boolean))];
-  const versions = [...new Set(entries.map((e) => e.version).filter(Boolean))];
-  const branches = [...new Set(entries.map((e) => e.gitBranch).filter(Boolean))];
-  const cwds = [...new Set(entries.map((e) => e.cwd).filter(Boolean))];
-  const title = [...entries.filter((e) => e.type === 'ai-title')].pop()?.aiTitle;
+  const sessionIds = [...new Set(all.map((e) => e.sessionId).filter(Boolean))];
+  const versions = [...new Set(all.map((e) => e.version).filter(Boolean))];
+  const branches = [...new Set(all.map((e) => e.gitBranch).filter(Boolean))];
+  const cwds = [...new Set(all.map((e) => e.cwd).filter(Boolean))];
+  const title = [...all.filter((e) => e.type === 'ai-title')].pop()?.aiTitle;
   const summaries = entries.filter((e) => e.type === 'summary');
   const leaves = summaries.map((e) => e.leafUuid).filter(Boolean);
 
@@ -478,7 +565,7 @@ function cmdSummary(file, opts) {
   }
 
   const out = {
-    file: { path: file, bytes: Buffer.byteLength(raw), lines: entries.length, parseErrors },
+    file: { path: file, bytes: Buffer.byteLength(raw), lines: rawLineCount, parseErrors },
     session: {
       sessionIds, versions, gitBranches: branches, cwds,
       aiTitle: title || null,
@@ -530,7 +617,7 @@ function cmdSummary(file, opts) {
 }
 
 function cmdTranscript(file, opts) {
-  const { entries } = loadEntries(file);
+  const { entries } = loadView(file, opts);
   const events = buildEvents(entries);
   const tools = pairTools(events);
   const only = new Set(
@@ -538,15 +625,18 @@ function cmdTranscript(file, opts) {
   );
   let hiddenSide = 0;
   let hiddenMeta = 0;
+  let hiddenCmd = 0;
   for (const ev of events) {
     if (ev.sidechain && !opts.sidechain) { hiddenSide++; continue; }
     if (ev.kind === 'parse-error') { console.log(header(ev, `PARSE ERROR: ${ev.error}`)); continue; }
     if (!only.has(roleKey(ev))) continue;
-    if (opts.noMeta && ev.kind === 'user' && (ev.isMeta || ev.isCommand)) { hiddenMeta++; continue; }
+    if (opts.noMeta && ev.kind === 'user' && ev.isMeta) { hiddenMeta++; continue; }
+    if (opts.noCmd && ev.kind === 'user' && ev.isCommand) { hiddenCmd++; continue; }
     printEvent(ev, opts, tools);
   }
   if (hiddenSide) console.log(`\n(${hiddenSide} sidechain events hidden — use --sidechain)`);
-  if (hiddenMeta) console.log(`(${hiddenMeta} command/meta events hidden — remove --no-meta to show)`);
+  if (hiddenMeta) console.log(`(${hiddenMeta} meta entries hidden — remove --no-meta to show)`);
+  if (hiddenCmd) console.log(`(${hiddenCmd} command entries hidden — remove --no-cmd to show)`);
 }
 
 function roleKey(ev) {
@@ -591,7 +681,7 @@ function printEvent(ev, opts, tools) {
 }
 
 function cmdUser(file, opts) {
-  const { entries } = loadEntries(file);
+  const { entries } = loadView(file, opts);
   const events = buildEvents(entries);
   for (const ev of events) {
     if (ev.kind !== 'user' || !visible(ev, opts)) continue;
@@ -610,7 +700,7 @@ function cmdUser(file, opts) {
 }
 
 function cmdTools(file, opts) {
-  const { entries } = loadEntries(file);
+  const { entries } = loadView(file, opts);
   const events = buildEvents(entries);
   const tools = pairTools(events);
   const rows = [];
@@ -648,7 +738,7 @@ function cmdTools(file, opts) {
 }
 
 function cmdUsage(file, opts) {
-  const { entries } = loadEntries(file);
+  const { entries } = loadView(file, opts);
   const events = buildEvents(entries);
   const assistants = events.filter((e) => e.kind === 'assistant' && visible(e, opts));
   if (opts.json) {
@@ -668,17 +758,17 @@ function cmdUsage(file, opts) {
 }
 
 function cmdGet(file, ref, opts) {
-  const { entries } = loadEntries(file);
+  const { entries } = loadView(file, opts);
   const events = buildEvents(entries);
   let ev = null;
   let rawEntry = null;
   if (/^\d+$/.test(ref)) {
     ev = events[Number(ref)];
-    if (!ev) die(`no event #${ref} (events: 0..${events.length - 1})`);
+    if (!ev) die(`no event #${ref} (view has events 0..${events.length - 1}; --include-current searches the full log)`);
   } else if (/^L\d+$/i.test(ref)) {
     const n = Number(ref.slice(1));
     rawEntry = entries.find((e) => e.line === n);
-    if (!rawEntry) die(`no line ${n} (file has ${entries.length} lines)`);
+    if (!rawEntry) die(`no line ${n} (view has ${entries.length} lines; --include-current searches the full log)`);
   } else {
     const lower = ref.toLowerCase();
     ev = events.find((e) => e.uuid?.toLowerCase().startsWith(lower));
@@ -702,7 +792,7 @@ function cmdGrep(file, pattern, opts) {
   } catch {
     re = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), opts.i ? 'gi' : 'g');
   }
-  const { entries } = loadEntries(file);
+  const { entries } = loadView(file, opts);
   const events = buildEvents(entries);
   const tools = pairTools(events);
   let hits = 0;
@@ -751,7 +841,16 @@ if (!file) die(`missing <file> — see "help"`);
 if (!['summary', 'transcript', 'user', 'tools', 'usage', 'get', 'grep'].includes(cmd))
   die(`unknown command "${cmd}" — see "help"`);
 
-const sessionFile = file === 'current' ? resolveCurrent() : file;
+let sessionFile;
+let treatAsCurrent;
+if (file === 'current') {
+  sessionFile = resolveCurrent();
+  treatAsCurrent = true;
+} else {
+  sessionFile = file;
+  treatAsCurrent = isCurrentSessionFile(file);
+}
+opts.treatAsCurrent = treatAsCurrent;
 
 switch (cmd) {
   case 'summary': cmdSummary(sessionFile, opts); break;

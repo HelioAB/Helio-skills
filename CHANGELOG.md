@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `session-log` stable export bundle (`skills/session-log/scripts/export.mjs`):
+  one dispatcher-level command writes the canonical five views — summary,
+  transcript (dialogue plus command lines, no tool lines or skill bodies),
+  user, tools, usage — as `<uuid8>-<view>.md` into a user-named directory
+  (default `<project-root>/session-logs/`), so the same parse request no longer
+  yields two or five files depending on the agent's discretion. `--views`
+  narrows the bundle; `--include-current` passes through to every view.
+- `session-log` current-invocation exclusion: parses of the current session cut
+  the trailing turn — command or prompt, skill body, and backend calls — by
+  default, suffix-trimmed so retained event indexes and `L` line references
+  still match the raw log; earlier turns and earlier `session-log` invocations
+  remain. Applies to all seven commands; `--include-current` restores the full
+  log. Explicit-path targets are trimmed only when the path matches an
+  env-backed current-session resolution (the env-less newest-file heuristic
+  fails open).
+- `session-log` flags: `--include-current` (common), and `--no-cmd` for
+  transcript (hide `[cmd]` command entries).
 - `session-log` claude-code backend: `current` locator — resolve the invoking
   session's log with no manual path (`$CLAUDE_CODE_SESSION_ID` →
   `${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<munged-cwd>/<id>.jsonl`), with a
@@ -58,6 +75,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `session-log` `--no-meta` now hides only harness-injected `[meta]` skill
+  bodies; command entries stay in the transcript. Add `--no-cmd` to hide those
+  as well. This keeps a transcript's opening slash-command request readable
+  while dropping the duplicated skill text.
+- Parked, not applied (session-log parse-stability): invocation-boundary
+  detection matches `claude-code.mjs` or `export.mjs` in the recorded Bash
+  command, then walks back to the nearest ordinary user entry; if a future
+  dispatch routes through an opaque wrapper name, detection falls back to the
+  last ordinary user entry and fails open (extra content, never over-trimming).
+  A session whose only turn is the current invocation exports an empty view by
+  design.
 - Parked, not applied (session-log T6 finding): a human's structured decisions
   (AskUserQuestion answers) are recorded only in the `tool_result`, so they are invisible
   to `user` / `transcript --no-tools` / `tools`; today the `grep` step and the assistant's

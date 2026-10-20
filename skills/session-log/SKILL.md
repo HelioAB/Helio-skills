@@ -1,11 +1,11 @@
 ---
 name: session-log
-description: Parse any coding agent's recorded session log — session overview, readable dialogue, human prompts, tool-call table, token usage, single-entry JSON, regex search — and let a new session selectively consume an old session's history without importing it wholesale. Use when analyzing, evaluating, or searching a past coding-agent session (e.g. reviewing how a skill behaved in a test round), or when continuing an old session in a new one.
+description: Parse any coding agent's recorded session log — session overview, readable dialogue, human prompts, tool-call table, token usage, stable five-view export bundle, single-entry JSON, regex search — and let a new session selectively consume an old session's history without importing it wholesale. Use when analyzing, evaluating, or searching a past coding-agent session (e.g. reviewing how a skill behaved in a test round), or when continuing an old session in a new one.
 ---
 
 # session-log
 
-A dispatcher: this file holds no parsing logic. It decides which coding agent's session log is wanted, then drives that agent's backend script in `scripts/`. One backend per agent; today that is claude-code. Adding an agent later = one new script + one new entry under "Backends" — nothing else changes.
+A dispatcher: this file holds no parsing logic. It decides which coding agent's session log is wanted, then drives that agent's backend script in `scripts/`; `scripts/export.mjs` adds bundle orchestration on top of the backend. One backend per agent; today that is claude-code. Adding an agent later = one new script + one new entry under "Backends" — nothing else changes.
 
 ## Dispatch
 
@@ -17,6 +17,8 @@ Pick the backend, in this order:
 4. Nothing matches or still ambiguous — ask, and list the supported agents.
 
 When the user means the session you are currently in, the locator is `current` — no path to find or type.
+
+Parses of the current session exclude the current invocation by default: the trailing user turn being served, from its turn-opening prompt or slash command onward. Earlier turns — including earlier `session-log` invocations — remain. The cut is a suffix trim, so retained `#idx` and `L` references still match the raw log; `--include-current` restores the full log. This applies to every command, including `get` and `grep`.
 
 One backend and one session log per invocation. Never write anything into an agent's session-store directory.
 
@@ -32,7 +34,7 @@ One backend and one session log per invocation. Never write anything into an age
 - `get <ref>` — full JSON of one entry. Event idx is the only ref form every backend guarantees.
 - `grep <pattern>` — regex across user/assistant text and tool inputs/results, one line per matching event, the match wrapped in `⟦⟧`. `-i` for case-insensitive.
 
-Common options: `--json` (NDJSON per record; `summary` emits one object), `--max-len <n>` (preview truncation across `user`/`tools`/`transcript`; per-view defaults 100/120/240 when unset), `-i`. Event `#idx` is the stable ordinal within that session log; every command shows the same numbering, so an idx seen anywhere works as a `get` ref.
+Common options: `--json` (NDJSON per record; `summary` emits one object), `--max-len <n>` (preview truncation across `user`/`tools`/`transcript`; per-view defaults 100/120/240 when unset), `--include-current` (parse the current invocation too; current-session only), `-i`. Event `#idx` is the stable ordinal within that session log; every command shows the same numbering, so an idx seen anywhere works as a `get` ref.
 
 ## Backends
 
@@ -43,16 +45,26 @@ Common options: `--json` (NDJSON per record; `summary` emits one object), `--max
 - Stored at `~/.claude/projects/<munged-cwd>/<session-id>.jsonl` (Windows: `%USERPROFILE%\.claude\projects\...`). To find any other session, list that directory yourself (newest first), then confirm with the user.
 - Recognized by: the path pattern above, or a file head of JSON lines carrying `"type":"user"|"assistant"|"summary"`, `message.id`, `sessionId`, `cwd`.
 - Aliases: claude code, claude-code, claude, cc.
-- Extras beyond the surface: `--sidechain` (subagent entries, hidden by default), `--thinking`, `--only <roles>`, `--no-meta` (skip harness-injected [cmd]/[meta] user blocks, transcript only), `--full`; `get` also accepts `L<line>` and uuid prefix; grep also searches @-mentioned attachment bodies and compact-summary text; result sizes are UTF-8 bytes.
+- Extras beyond the surface: `--sidechain` (subagent entries, hidden by default), `--thinking`, `--only <roles>`, `--no-meta` (hide harness-injected [meta] skill bodies; command entries stay), `--no-cmd` (hide [cmd] command entries), `--full`; `get` also accepts `L<line>` and uuid prefix; grep also searches @-mentioned attachment bodies and compact-summary text; result sizes are UTF-8 bytes.
 - Format notes: assistant turns arrive as several jsonl lines sharing one `message.id` — merged into one message; every `tool_use` block is paired with its `tool_result`; bookkeeping entries (`mode`, `ai-title`, `file-history-snapshot`, …) are skipped; `type:"summary"` entries (compaction summaries, session-continuation chains) appear as `[compact-summary]` events, and `summary` reports their leaf uuids.
 
 ## Evaluation flow — analyzing a recorded session
 
 1. `summary` — how big, how many turns, which tools, what cost.
 2. `user` — what the human actually asked, and where they intervened.
-3. `transcript --no-tools --no-meta` — the dialogue itself, harness-injected [cmd]/[meta] blocks skipped (in skill-test sessions they are duplicated skill text); add `--thinking` if the reasoning matters.
+3. `transcript --no-tools --no-meta` — the dialogue itself; harness-injected [meta] skill bodies skipped (in skill-test sessions they are duplicated skill text), command entries kept; add `--thinking` if the reasoning matters.
 4. `tools` / `usage` — behavioral fingerprint (what it read/wrote/asked) and token spend.
 5. `grep <term>` — every place the term surfaced: prompts, attachments, tool I/O.
+
+## Export flow — stable parse files
+
+When the user asks to parse a session and write the result to a directory, run the dispatcher-level exporter once; do not assemble the bundle by hand:
+
+`node scripts/export.mjs claude-code <locator> --out <dir>`
+
+It writes the canonical five views — `<uuid8>-summary.md`, `<uuid8>-transcript.md` (dialogue plus command lines, no tool lines or skill bodies), `<uuid8>-user.md`, `<uuid8>-tools.md`, `<uuid8>-usage.md` — creating `<dir>` and overwriting same-name files (derivatives are regenerable). `<dir>` defaults to `<project-root>/session-logs/`; project root is the git toplevel of the consuming session's cwd (the cwd itself when not a repo). `--views summary,transcript` narrows the bundle when the user names specific views; `--include-current` passes through to every view.
+
+A current-session export ends at the last turn before the request: the invocation turn is excluded by default (see above), so the files never contain their own production.
 
 ## Import flow — continuing an old session in a new one
 
