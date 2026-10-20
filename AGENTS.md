@@ -41,6 +41,12 @@
 - 验证分级：行为变更须在 `_dev/test-log.md` 记录验证结论后才提交；文档/小修直接提交；CHANGELOG `[Unreleased]` 必记不变。
 - 收尾即弃：结论蒸馏进 CHANGELOG（含 "Parked, not applied"）后，收尾提交删除整个 `_dev/`；删除提交之前其最终内容（尤其 test-log）必须已入库。
 
+## 分支命名
+
+- `drafts/<name>/` 的初始开发：`feat/<name>`（新增 skill 属仓库级功能）。
+- `skills/<name>/` 的升格后迭代：`<name>/<topic>`，kebab-case。一个 `_dev/` 生命周期对应一条分支：从最新 `main` 创建，收尾提交（删除 `_dev/`）后 fast-forward 合入 `main` 并删除分支；已合并的分支名不复用。
+- 分支名与提交 scope 对齐（`session-log/current-locator` ↔ `feat(session-log): ...`）；skill 迭代分支不加 `feat/`、`fix/` 等类型前缀，因为一轮迭代常混合多种变更类型。topic 取 `_dev/plan.md` 的主题或 CHANGELOG `[Unreleased]` 条目。
+
 ## 约定
 
 - `drafts/` 下 `_` 前缀目录均为开发期专用：不属于运行结构，移入 `skills/` 时整目录丢弃；开发期文件一律置于 `_` 目录内，不裸放于 skill 根目录。
