@@ -3,12 +3,14 @@
 // Zero dependencies, Node >= 18. Usage overview: run without arguments.
 
 import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 
 // ---------- CLI ----------
 
 const USAGE = `claude-code — session-log backend: Claude Code conversation-history .jsonl
 
-usage: node claude-code.mjs <command> <file> [args] [options]
+usage: node claude-code.mjs <command> <file|current> [args] [options]
 
 commands:
   summary              session overview: meta, timeline, counts, tools, tokens
@@ -30,7 +32,14 @@ options:
   --max-len <n>        truncate preview strings everywhere (user, tools, transcript);
                        per-view defaults 100/120/240 when unset
   --json               NDJSON output (summary: single JSON object)
-  -i                   grep: case-insensitive`;
+  -i                   grep: case-insensitive
+
+locator:
+  current               instead of a file path, resolve this session's log:
+                       \$CLAUDE_CODE_SESSION_ID →
+                       \${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<munged-cwd>/<id>.jsonl
+                       (fallbacks: id search across project dirs, newest-file
+                       heuristic); the resolution note goes to stderr`;
 
 const VALUE_FLAGS = ['--max-len', '--only'];
 
@@ -110,6 +119,104 @@ function fmtTok(n) {
 }
 
 const num = (n) => (n ?? 0).toLocaleString('en-US');
+
+// ---------- current-session resolution ----------
+
+// Claude Code stores session transcripts at
+//   <root>/projects/<munged-cwd>/<session-id>.jsonl
+// where <root> is $CLAUDE_CONFIG_DIR or ~/.claude and <munged-cwd> is the
+// session's working directory with every non-alphanumeric char → one "-".
+const FRESH_MS = 10 * 60 * 1000;
+
+function jsonlFiles(dir) {
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+  return names
+    .filter((f) => f.endsWith('.jsonl'))
+    .map((f) => {
+      const p = path.join(dir, f);
+      try {
+        const st = fs.statSync(p);
+        return { p, mtime: st.mtimeMs, size: st.size };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.mtime - a.mtime);
+}
+
+function resolveCurrent() {
+  const home = process.env.USERPROFILE || process.env.HOME || os.homedir();
+  const root = path.join(
+    process.env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'),
+    'projects'
+  );
+  const munge = (p) => p.replace(/[^A-Za-z0-9]/g, '-');
+  const id = process.env.CLAUDE_CODE_SESSION_ID;
+  const dirByCwd = path.join(root, munge(process.cwd()));
+  const note = (file, via) => console.error(`current → ${file} (via ${via})`);
+
+  if (id) {
+    const direct = path.join(dirByCwd, `${id}.jsonl`);
+    if (fs.existsSync(direct)) {
+      // Documented edge: after --continue/--resume without an explicit id the
+      // env var can still hold the startup session's id. If a different file in
+      // the same directory was written within the freshness window, trust that.
+      const top = jsonlFiles(dirByCwd)[0];
+      if (top && path.resolve(top.p) !== path.resolve(direct) && Date.now() - top.mtime < FRESH_MS) {
+        console.error(`warning: env session id resolves to a file that is not the newest; using ${top.p}`);
+        note(top.p, 'newest, env id stale');
+        return top.p;
+      }
+      note(direct, 'env id');
+      return direct;
+    }
+    // Derived path missing (different cwd, >200-char munged name, config dir
+    // mismatch): search every project dir for the id's file name.
+    const hits = [];
+    for (const d of fs.existsSync(root) ? fs.readdirSync(root) : []) {
+      const p = path.join(root, d, `${id}.jsonl`);
+      if (fs.existsSync(p)) hits.push(p);
+    }
+    if (hits.length) {
+      hits.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+      if (hits.length > 1)
+        console.error(`warning: session id matches ${hits.length} files; using the newest`);
+      note(hits[0], 'id search');
+      return hits[0];
+    }
+  } else {
+    const top = jsonlFiles(dirByCwd)[0];
+    if (top) {
+      note(top.p, 'heuristic: newest in munged cwd, no CLAUDE_CODE_SESSION_ID');
+      return top.p;
+    }
+  }
+
+  console.error('error: cannot resolve the current session');
+  console.error(
+    id
+      ? `  ($CLAUDE_CODE_SESSION_ID=${id} has no .jsonl under ${root}; session persistence may be disabled)`
+      : '  (no $CLAUDE_CODE_SESSION_ID and no .jsonl in the munged-cwd project dir)'
+  );
+  const pool = jsonlFiles(dirByCwd);
+  if (!pool.length && fs.existsSync(root)) {
+    for (const d of fs.readdirSync(root))
+      for (const f of jsonlFiles(path.join(root, d))) pool.push(f);
+    pool.sort((a, b) => b.mtime - a.mtime);
+  }
+  if (pool.length) {
+    console.error('  candidates (newest first):');
+    for (const c of pool.slice(0, 5))
+      console.error(`    ${c.p}  ${fmtDate(new Date(c.mtime).toISOString())}  ${fmtBytes(c.size)}`);
+  }
+  process.exit(1);
+}
 
 // ---------- loading ----------
 
@@ -644,22 +751,24 @@ if (!file) die(`missing <file> — see "help"`);
 if (!['summary', 'transcript', 'user', 'tools', 'usage', 'get', 'grep'].includes(cmd))
   die(`unknown command "${cmd}" — see "help"`);
 
+const sessionFile = file === 'current' ? resolveCurrent() : file;
+
 switch (cmd) {
-  case 'summary': cmdSummary(file, opts); break;
-  case 'transcript': cmdTranscript(file, opts); break;
-  case 'user': cmdUser(file, opts); break;
-  case 'tools': cmdTools(file, opts); break;
-  case 'usage': cmdUsage(file, opts); break;
+  case 'summary': cmdSummary(sessionFile, opts); break;
+  case 'transcript': cmdTranscript(sessionFile, opts); break;
+  case 'user': cmdUser(sessionFile, opts); break;
+  case 'tools': cmdTools(sessionFile, opts); break;
+  case 'usage': cmdUsage(sessionFile, opts); break;
   case 'get': {
     const ref = pos[2];
     if (!ref) die('get needs a ref: event idx | L<line> | uuid prefix');
-    cmdGet(file, ref, opts);
+    cmdGet(sessionFile, ref, opts);
     break;
   }
   case 'grep': {
     const pattern = pos.slice(2).join(' ');
     if (!pattern) die('grep needs a pattern');
-    cmdGrep(file, pattern, opts);
+    cmdGrep(sessionFile, pattern, opts);
     break;
   }
 }

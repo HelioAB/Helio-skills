@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `session-log` claude-code backend: `current` locator — resolve the invoking
+  session's log with no manual path (`$CLAUDE_CODE_SESSION_ID` →
+  `${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<munged-cwd>/<id>.jsonl`), with a
+  freshness cross-check for the stale-id edge after `--continue`/`--resume`, an
+  id search across project dirs when the derived path is missing, and a
+  newest-file heuristic when the env var is absent; resolution notes go to
+  stderr so stdout stays parseable. Parked, not applied: the env-less heuristic
+  has no freshness guard (it resolved a 7-day-old file in a foreign project dir,
+  labeled as heuristic — a possible mtime threshold or confirmation step), and
+  the failure candidate table can put unrelated concurrent sessions first, so
+  consumers should confirm with the user rather than take the top hit.
 - Graduated-skill iteration procedure (in `AGENTS.md`): iterating inside
   `skills/<name>/` may recreate `_`-prefixed dev dirs (`_dev/`, `_sources/`) in
   place; behavior changes need a `_dev/test-log.md` entry before they commit,

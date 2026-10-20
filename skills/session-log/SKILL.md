@@ -16,6 +16,8 @@ Pick the backend, in this order:
 3. The file head matches a backend's schema (Read the first lines yourself).
 4. Nothing matches or still ambiguous — ask, and list the supported agents.
 
+When the user means the session you are currently in, the locator is `current` — no path to find or type.
+
 One backend and one session log per invocation. Never write anything into an agent's session-store directory.
 
 ## Command surface — identical for every backend
@@ -36,9 +38,9 @@ Common options: `--json` (NDJSON per record; `summary` emits one object), `--max
 
 ### claude-code
 
-- Invocation: `node scripts/claude-code.mjs <command> <file> [options]`
-- Locator: path of one session file.
-- Stored at `~/.claude/projects/<munged-cwd>/<session-id>.jsonl` (Windows: `%USERPROFILE%\.claude\projects\...`). To find a session, list that directory yourself (newest first), then confirm with the user.
+- Invocation: `node scripts/claude-code.mjs <command> <locator> [options]`
+- Locator: path of one session file, or `current` for the session you are in — resolved from `$CLAUDE_CODE_SESSION_ID` to `${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<munged-cwd>/<id>.jsonl`, with a freshness cross-check against the directory's newest file, an id search across project dirs when that path is missing, and a newest-file heuristic when the env var is absent; the resolution note goes to stderr.
+- Stored at `~/.claude/projects/<munged-cwd>/<session-id>.jsonl` (Windows: `%USERPROFILE%\.claude\projects\...`). To find any other session, list that directory yourself (newest first), then confirm with the user.
 - Recognized by: the path pattern above, or a file head of JSON lines carrying `"type":"user"|"assistant"|"summary"`, `message.id`, `sessionId`, `cwd`.
 - Aliases: claude code, claude-code, claude, cc.
 - Extras beyond the surface: `--sidechain` (subagent entries, hidden by default), `--thinking`, `--only <roles>`, `--no-meta` (skip harness-injected [cmd]/[meta] user blocks, transcript only), `--full`; `get` also accepts `L<line>` and uuid prefix; grep also searches @-mentioned attachment bodies and compact-summary text; result sizes are UTF-8 bytes.
