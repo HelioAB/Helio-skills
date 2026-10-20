@@ -35,6 +35,12 @@
      `Graduated from drafts/<name> after <门槛>`）；test-log 中暂不处置的已知边界以
      "Parked, not applied" 记入——这是它们活过 `_dev/` 丢弃的唯一去处。
 
+## 已升格 skill 的迭代（skills/ 内）
+
+- 迭代期可在 `skills/<name>/` 下重建 `_` 前缀开发目录（`_dev/`，必要时 `_sources/`），含义与 `drafts/` 下相同。
+- 验证分级：行为变更须在 `_dev/test-log.md` 记录验证结论后才提交；文档/小修直接提交；CHANGELOG `[Unreleased]` 必记不变。
+- 收尾即弃：结论蒸馏进 CHANGELOG（含 "Parked, not applied"）后，收尾提交删除整个 `_dev/`；删除提交之前其最终内容（尤其 test-log）必须已入库。
+
 ## 约定
 
 - `drafts/` 下 `_` 前缀目录均为开发期专用：不属于运行结构，移入 `skills/` 时整目录丢弃；开发期文件一律置于 `_` 目录内，不裸放于 skill 根目录。

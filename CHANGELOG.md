@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Graduated-skill iteration procedure (in `AGENTS.md`): iterating inside
+  `skills/<name>/` may recreate `_`-prefixed dev dirs (`_dev/`, `_sources/`) in
+  place; behavior changes need a `_dev/test-log.md` entry before they commit,
+  doc-only changes commit directly, and iteration close distills conclusions
+  into CHANGELOG (including "Parked, not applied" findings) then drops `_dev/`
+  wholesale.
 - Graduation procedure (in `AGENTS.md`): codified from the grill-x and session-log
   graduations — commit pending test-log changes first; one graduation commit moves
   runtime files verbatim (100% rename), drops `_`-prefixed dirs wholesale, and records
