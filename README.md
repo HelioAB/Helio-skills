@@ -16,7 +16,7 @@ The skills I personally use in real projects. One skill per directory under `ski
 | 「UAT 通过」/「UAT 有问题：…」 | 把本轮结果写进 `_dev/test-log.md`，并评论到 PR |
 | 「同步 main」 | 在 worktree 里 `fetch` + `merge origin/main`（不 force push） |
 | 「收尾」 | 更新 CHANGELOG、记录最终认可、确认 `pending: 0`、跑门槛 1、等 CI、self-review |
-| 「可以合并」 | `gh pr ready` → rebase merge → 按顺序清理链接/worktree/分支 |
+| 「可以合并」 | agent 先跑 `workitem close --dry-run` 给你看步骤，再跑 `close --yes` 执行 ready → rebase merge → 清理链接/worktree/分支 |
 
 「可以合并」是唯一的合并授权；在你明确说这句话之前，agent 只准备，不 merge。
 
@@ -43,7 +43,10 @@ node scripts/workitem.mjs plan save < plan.md      # 开始工作项
 node scripts/workitem.mjs uat save --venue worktree --session <id> --result pass
 node scripts/workitem.mjs status                   # 分支/worktree/PR/pending
 node scripts/workitem.mjs sync                     # 重试失败的远端写入
+node scripts/workitem.mjs close --dry-run          # 预检并打印将执行的收尾步骤
+node scripts/workitem.mjs close --yes              # 执行 ready/merge/清理
+node scripts/workitem.mjs close --yes --sandbox <dir>   # UAT 在 sandbox 时顺带切回链接
 node scripts/check.mjs                             # 门槛 1
 ```
 
-合并与清理的完整顺序见 [AGENTS.md](AGENTS.md) 的「关闭与清理顺序」。
+`close` 默认就是 dry-run；只有 `--yes` 才改状态。合并后它会按 AGENTS 的 11 步顺序执行并验证结果。完整顺序与失败兜底见 [AGENTS.md](AGENTS.md) 的「关闭与清理顺序」。
