@@ -11,16 +11,28 @@
 ```text
 .
 ├── skills/
-│   └── <skill-name>/       # 一个 skill 一个目录，kebab-case
-│       ├── SKILL.md        # 必需：frontmatter + 正文
+│   └── <skill-name>/
+│       ├── SKILL.md
 │       ├── references/     # 可选：按需加载的参考资料
 │       ├── scripts/        # 可选：skill 调用的脚本
-│       └── _dev/           # 可选：迭代期本地工作区（gitignored，常驻、永不入库）
-└── drafts/                 # 开发中的 skill（结构同 skills/）；验证有效后移入 skills/
-    └── <skill-name>/       # _ 目录入库（升格证据）；升格时仅丢弃本 skill 的 _ 目录
-        ├── _sources/       # 可选：开发期参考（本 skill 派生自哪些 skill）
-        └── _dev/           # 可选：开发期计划（plan.md）与测试记录（test-log.md，只记结论与关键片段）
+│       ├── tests/          # 可选：入库的 CI 夹具
+│       └── _dev/           # 仅 worktree 内；gitignored 的 per-branch 工作副本
+├── drafts/
+│   └── <skill-name>/
+│       ├── _sources/       # 入库，升格时丢弃
+│       └── _dev/           # 入库，升格时丢弃
+├── scripts/
+│   ├── check.mjs
+│   ├── link-skill.mjs
+│   ├── workitem.mjs
+│   └── tests/
+├── .github/workflows/ci.yml
+└── .claude/settings.json
 ```
+
+- `skills/<name>/_dev/` 只在分支 worktree 中存在；主检出没有永久的 `_dev`。
+- `.claude/skills/` 是本地链接目录，gitignored，不在树中展开。
+- `skills/**/_sources/` 不改语义（gitignored、暂无约定）；`drafts/` 的 `_dev`、`_sources` 语义不变。
 
 ## 升格流程（drafts/ → skills/）
 
@@ -35,25 +47,58 @@
    - CHANGELOG `[Unreleased]`：Added 段顶部记升格条目（能力一句话 +
      `Graduated from drafts/<name> after <门槛>`）；test-log 中暂不处置的已知边界以
      "Parked, not applied" 记入——这是它们活过 `_dev/` 丢弃的唯一去处。
+3. 开 draft PR；门槛 1（CI）通过、门槛 2（UAT）认可后 rebase merge 到 `main`；
+   merge 后删除分支/worktree。没有 close 提交。
 
-## 已升格 skill 的迭代（skills/ 内）
+## 已升格 skill 的迭代（GitHub Flow）
 
-- 就地迭代：直接修改 `skills/<name>/`。`_dev/` 是常驻本地的工作目录（见目录树）——永不删除；test-log 按轮分节累积，plan.md 每轮重写。
-- 两段门槛（针对行为变更；文档/小修不构成迭代，提交方式见「分支与提交」）：
-  1. 合入前：脚本/夹具验证通过，结论记入 `_dev/test-log.md`。
-  2. 关闭前：至少一次真实项目使用，结论记入 test-log，且经用户认可；长期没有真实使用机会时，用户明示豁免并记录。本地 junction 指向 `skills/<name>/`，内容合入 `main` 后日常会话即在使用新版本——真实使用就是测试。
-- CHANGELOG 是唯一持久记录（`_dev/` 不入库）：条目须吸收全部结论与 "Parked, not applied" 项。
-- 收尾即记：关闭迭代 = 在 test-log 写关闭条目（日期、真实使用轮次、认可或豁免）、plan.md 标记 superseded。没有 close 提交。
-- 同一 skill 串行迭代：上一轮未关闭不开新轮；验证窗口期发现缺陷，修复作为同一轮内的又一次内容提交，验证重新起算。
+- 一个工作项 = 一条分支 = 一个 PR = 一次行为变更。
+- 从最新 `main` 建 `<skill>/<topic>` 分支和 `.worktree/<skill>/<topic>` worktree；draft PR 正文 = plan。
+- `skills/<skill>/_dev/` 是当前 worktree 内的 per-branch 工作副本（gitignored，随 worktree 删除），不是记录。
+- 持久记录：PR 正文（plan）、PR 评论（UAT）、`CHANGELOG.md`（仓库内唯一持久摘要）。
+- 流程：
+  1. 讨论方案；说“保存为 plan” → `node scripts/workitem.mjs plan save`（建分支/worktree、写 `_dev/plan.md`、空提交 + push、开 draft PR）。
+  2. 实现；每次 push 跑 `node scripts/check.mjs`（门槛 1）。
+  3. 建 UAT 链接：worktree 自链，或 sandbox 的 `.claude/skills/<skill>` 指向 worktree skill。
+  4. UAT（门槛 2）：真实使用；每轮结束运行 `node scripts/workitem.mjs uat save`（`_dev/test-log.md` + PR 评论）。
+  5. 缺陷：同分支提交，重跑门槛 1，重新验收。新需求：新工作项。
+  6. 关闭前：CHANGELOG 吸入结论；`node scripts/workitem.mjs uat save --final`；CI 绿；self-review。
+  7. merge（rebase）→ 删除分支/worktree；若用 sandbox，链接指回 `skills/<skill>`。没有 close 提交。
+- 同一 skill 同时只开一条分支；不同 skill 可并行。
+- 门槛 1（CI）：结构/打包、frontmatter、相对链接、脚本语法、夹具回归、仓库不变式；不调用 LLM。
+- 门槛 2（UAT）：声明的 UAT 场地真实使用 + 输出检查 + 用户认可/豁免。
+- 链接命令：worktree 自链 `node scripts/link-skill.mjs <skill> <worktree> --link-dir <worktree>/.claude/skills`；
+  sandbox 用同一命令改 `--link-dir <sandbox>/.claude/skills`；合入后
+  `node scripts/link-skill.mjs <skill> main --link-dir <sandbox>/.claude/skills` 指回主检出。
+- 删除 worktree 前先移除其中的 skill 链接
+  （`node scripts/link-skill.mjs remove <skill> --link-dir <worktree>/.claude/skills`）：
+  Windows 上递归删除会沿 junction 删到主检出。
+
+## 工作项自动化
+
+- `node scripts/workitem.mjs plan save`：写 `_dev/plan.md`，建/更新 draft PR 正文；工作项不存在时自动创建分支/worktree。plan 正文从 stdin（推荐 heredoc）读取；为空时沿用已有的 `_dev/plan.md`。
+- `node scripts/workitem.mjs uat save ...`：追加 `_dev/test-log.md`，发 PR 评论；每轮 UAT 后自动运行。
+- `node scripts/workitem.mjs uat save --final ...`：关闭前的最终认可/豁免评论。
+- `node scripts/workitem.mjs sync`：重试失败的远端同步。
+- `node scripts/workitem.mjs status`：分支/worktree/PR/pending 状态。
+- 用户说“保存为 plan/更新 plan/记录方案”时运行 `plan save`；本地优先，gh 失败留 pending。
+- sandbox 场地执行 `uat save` 时用 `--repo <worktree>` 指向工作项 worktree。
+- 权限只放行 `node scripts/{workitem,check,link-skill}.mjs`；不要直接允许 `gh`。
 
 ## 分支与提交
 
-- `drafts/<name>/` 的初始开发用 `feat/<name>`（新增 skill 属仓库级功能）。
-- `skills/<name>/` 的升格后迭代用 `<name>/<topic>`，kebab-case，不加 `feat/`、`fix/` 等类型前缀（一轮迭代常混合多种变更类型）。一次开发脉冲一条分支：从最新 `main` 创建，内容提交后 fast-forward 合入 `main` 并删除；已合并的分支名不复用。分支与 `_dev/` 解耦：一轮迭代常含多次内容提交、多条分支（验证窗口期的修复各开短分支）。
-- 提交信息用 Conventional Commits，scope 与 skill 名一致（`session-log/current-locator` ↔ `feat(session-log): ...`）；topic 取 `_dev/plan.md` 的主题或 CHANGELOG `[Unreleased]` 条目。
-- 文档/小修可直接提交到 `main`。
+- `main` 始终可用；一个工作项 = 一条分支 = 一个 PR。
+- 分支命名：`<skill>/<topic>`（kebab-case，不加 `feat/`/`fix/` 前缀）；repo 级流程变更用 `repo/<topic>`；升格沿用 `feat/<name>`。
+- 从最新 `main` 创建；merge 用 rebase；merge 后删除分支与 worktree；已合并分支名不复用。
+- 提交信息用 Conventional Commits，scope 与 skill 名一致
+  （`session-log/current-locator` ↔ `feat(session-log): ...`）；topic 取 `_dev/plan.md`
+  的主题或 CHANGELOG `[Unreleased]` 条目。
+- 文档/小修可直接提交 `main`。
 
 ## 约定
 
-- 开发期文件一律放进 `_` 目录，不裸放 skill 根目录；`_` 目录不属于运行结构。入库语义见目录树。
-- `skills/` 下 skill 的新增或变更，必须在同次内容提交中同步更新 `CHANGELOG.md` 的 `[Unreleased]` 段（`drafts/` 不记）。
+- `skills/<skill>/_dev/` 只在 worktree 中存在，是 gitignored 的 per-branch 工作副本；不入库、不当记录，随 worktree 删除。
+- `drafts/` 下的 `_dev/`、`_sources/` 入库（升格证据），升格时整目录丢弃。
+- `skills/<skill>/tests/` 入库，CI 夹具，不属于运行结构。
+- `skills/` 下新增或变更，必须在同次内容提交中同步更新 `CHANGELOG.md` 的 `[Unreleased]` 段（`drafts/` 不记）。
+- `CHANGELOG.md` 是仓库内唯一持久摘要；PR 正文/评论是远程持久记录。

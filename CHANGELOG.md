@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `.claude/settings.json`: allow rules for `node scripts/workitem.mjs`,
+  `scripts/check.mjs`, and `scripts/link-skill.mjs`; `gh` stays reachable only
+  through the scripts.
+- `.gitattributes` pins LF line endings for the `session-log` test fixtures and
+  goldens, so Windows' `core.autocrlf` cannot change the summary byte counts.
 - Work-item automation (`scripts/workitem.mjs`): `plan save` creates
   `.worktree/<skill>/<topic>` and branch `<skill>/<topic>` from `main`, writes
   the stdin-or-existing `_dev/plan.md`, makes one empty commit, pushes, and
@@ -119,6 +124,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `AGENTS.md` iteration flow replaced with GitHub Flow + staging/UAT: one work
+  item = one branch = one PR; gate 1 (CI) and gate 2 (UAT) before a rebase
+  merge; PR body/comments plus `CHANGELOG.md` as the durable records; worktree
+  `_dev/` as a per-branch working copy; declared UAT venue and link switching;
+  `workitem` automation triggers; one open branch per skill; and link removal
+  before worktree deletion (Windows junction safety).
 - `.gitignore` also ignores `session-logs/`, the default output directory of
   `session-log export` (regenerable derivatives, never source).
 - `AGENTS.md` dedupe (docs-only, no behavior change): `_`/`_dev/` deposit

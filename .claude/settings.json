@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node scripts/workitem.mjs *)",
+      "Bash(node scripts/check.mjs *)",
+      "Bash(node scripts/link-skill.mjs *)"
+    ]
+  }
+}
