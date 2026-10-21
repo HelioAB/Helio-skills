@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Work-item automation (`scripts/workitem.mjs`): `plan save` creates
+  `.worktree/<skill>/<topic>` and branch `<skill>/<topic>` from `main`, writes
+  the stdin-or-existing `_dev/plan.md`, makes one empty commit, pushes, and
+  creates or updates the draft PR body; `uat save` appends a section to
+  `_dev/test-log.md` and posts the identical section as a PR comment, deduped
+  by section hash; `--final` records approval/waiver; `sync` retries pending
+  remote writes; `status` prints branch/worktree/PR/pending. Local-first: a gh
+  failure leaves `_dev/sync.json` pending and exits 0 with a warning. Never
+  commits `_dev`, never force-pushes, never reuses a branch.
+- Work-item integration tests (`scripts/tests/`): `run.mjs` builds a temporary
+  bare repo + clone and drives `workitem.mjs` through `fake-gh.mjs`, covering
+  create/update idempotency, UAT log+comment, duplicate suppression, pending
+  retry through `sync`, status, error paths, and the no-tracked-`_dev`
+  invariant. Discovered and run by `scripts/check.mjs`.
 - UAT link helper (`scripts/link-skill.mjs`): `status` lists each
   `.claude/skills` link and whether its target exists; `<skill> main` points a
   link at the main worktree's `skills/<skill>`; `<skill> <worktree-path>` points
