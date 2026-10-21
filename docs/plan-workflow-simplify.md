@@ -1,6 +1,6 @@
 # 开发流程精简（workflow simplification）
 
-- **状态**：P0 待执行；P1–P3 待决策
+- **状态**：P0 已完成（PR #3，rebase merge `461616c`，2026-10-21）；P1–P3 待决策
 - **日期**：2026-10-21
 - **基线**：`main` @ `9cdb6f6`（PR #2 已 rebase merge；`repo/workitem-close` 本地/远端均已删除）
 - **范围**：P0 改 `README.md`、`AGENTS.md`、`scripts/workitem.mjs`、`scripts/tests/run.mjs`、`CHANGELOG.md`；P1/P2 各开独立工作项；P3 只讨论
