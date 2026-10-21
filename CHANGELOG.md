@@ -82,6 +82,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `AGENTS.md` dedupe (docs-only, no behavior change): `_`/`_dev/` deposit
+  semantics now live only in the directory tree; the CHANGELOG obligation is
+  stated once under 「约定」; the graduation commit's `feat/<name>` branch,
+  Conventional Commits, and the docs/small-fix path are now explicit. Dropped
+  the speculative `skills/`-side `_sources/` mention and the empty-directory
+  cleanup step; `.gitignore` now points at `AGENTS.md` for the `_dev/`
+  rationale.
 - `session-log` `--no-meta` now hides only harness-injected `[meta]` skill
   bodies; command entries stay in the transcript. Add `--no-cmd` to hide those
   as well. This keeps a transcript's opening slash-command request readable

@@ -16,7 +16,7 @@ desktop.ini
 # 本地 skill 安装副本（由 skills/ 或 drafts/ 派生，非源文件）
 .claude/skills/
 
-# 升格后迭代的本地开发目录（常驻工作区、不入库；结论须蒸馏进 CHANGELOG。drafts/ 下的仍入库）
+# skills/ 迭代期的本地开发目录（不入库；约定见 AGENTS.md）
 skills/**/_dev/
 skills/**/_sources/
 
