@@ -149,6 +149,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- grill-x docs mode no longer assumes the project root. All docs output now
+  lives under one negotiated base directory (`B/CONTEXT.md` + `B/adr/`, or
+  `B/CONTEXT-MAP.md` for multi-context repos): an existing glossary or ADR
+  directory is followed where it lives, a bare topic folder gets a topic-named
+  subdirectory, and a project root with none of these is asked first —
+  recommending an existing `docs/`/`doc/`, else `docs/`; the root is never the
+  default. A user-named location still overrides everything. SKILL.md,
+  domain-modeling.md, CONTEXT-FORMAT.md, and ADR-FORMAT.md now state one
+  consistent rule; they previously contradicted each other on whether a
+  user-named location could override `docs/adr/`.
 - CI triggers: GitHub Actions now runs only a nightly `schedule` audit of
   `main` (`17 14 * * *` UTC, 22:17 China time). Pushes, PR updates, and
   merges do not trigger a run. Gate 1 (`node scripts/check.mjs`) runs
