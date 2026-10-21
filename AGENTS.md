@@ -16,8 +16,8 @@
 │       ├── references/     # 可选：按需加载的参考资料
 │       ├── scripts/        # 可选：skill 调用的脚本
 │       └── _dev/           # 可选：迭代期本地工作区（gitignored，常驻、永不入库）
-└── drafts/                 # 开发中的 skill（结构同 skills/）；_ 目录入库，升格时整体丢弃
-    └── <skill-name>/
+└── drafts/                 # 开发中的 skill（结构同 skills/）；验证有效后移入 skills/
+    └── <skill-name>/       # _ 目录入库（升格证据）；升格时仅丢弃本 skill 的 _ 目录
         ├── _sources/       # 可选：开发期参考（本 skill 派生自哪些 skill）
         └── _dev/           # 可选：开发期计划（plan.md）与测试记录（test-log.md，只记结论与关键片段）
 ```
