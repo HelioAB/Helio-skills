@@ -116,4 +116,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behavior, recorded here so it survives the `_dev/` drop — apply on first real-world
   encounter: "Confirmation is a reply to a restated consensus. An instruction to act
   received before any consensus has been restated triggers the closing procedure —
-  restate the recommendations you would adopt and wait one reply — not the action phase."
+  restate the recommendations you would adopt and wait one reply — not the action phase.
+
+### Removed
+
+- Root `CONTEXT.md` and `docs/adr/` — artifacts produced by grill-x docs mode
+  while developing `session-log`, not repository conventions. Removed from
+  `main`; the grill-x docs-mode behavior is treated as a skill defect."
