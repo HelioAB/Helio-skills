@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Full-flow work-item simulation (`scripts/tests/run.mjs`): `fake-gh` now
+  models `gh pr ready` and `gh pr merge --rebase` (a draft merge fails with
+  "Pull request is still a draft", the PR becomes `MERGED`, and
+  `--delete-branch` removes the remote branch when `FAKE_GH_REPO` /
+  `FAKE_GH_WORKTREE` are set). Two end-to-end scenarios drive a temporary
+  bare repo + clone through plan → content commit → worktree self-link and
+  sandbox link → UAT (dedupe + `--final`) → `status` `pending: 0` → ready →
+  rebase merge → the documented cleanup order → a fresh second work item; and
+  through a work item whose branch merges an advanced `origin/main` before
+  closing. Cleanup asserts main contains both sides, no worktree/branch
+  remains, `_dev` is gone, and the sandbox link points back at the main
+  checkout.
 - `.claude/settings.json`: allow rules for `node scripts/workitem.mjs`,
   `scripts/check.mjs`, and `scripts/link-skill.mjs`; `gh` stays reachable only
   through the scripts.
@@ -125,6 +137,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- GitHub Flow hardening (from `docs/plan-github-flow-followups.md`): closing a
+  work item now starts with `gh pr ready <n>` — a draft PR cannot merge — and
+  follows an 11-step, order-bound cleanup: rebase merge, point the sandbox
+  link back at `main`, remove the worktree's own skill link, remove the
+  worktree, fast-forward `main`, then delete the local and remote branch (the
+  link removal stays mandatory because Windows deletion follows junctions).
+  `AGENTS.md` also states that `workitem status` must show `pending: 0`
+  before merge, that a moving `main` is absorbed with `git fetch` +
+  `git merge origin/main` in the worktree and never a force push (rebase +
+  `force-with-lease` only with explicit approval), and that `repo/<topic>`
+  repository-level work stays manual rather than extending `workitem`.
+  `.github/workflows/ci.yml` checks out the full history (`fetch-depth: 0`),
+  so the CHANGELOG soft check can diff against the PR base instead of warning
+  "cannot diff against base".
 - `AGENTS.md` iteration flow replaced with GitHub Flow + staging/UAT: one work
   item = one branch = one PR; gate 1 (CI) and gate 2 (UAT) before a rebase
   merge; PR body/comments plus `CHANGELOG.md` as the durable records; worktree

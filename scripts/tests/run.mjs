@@ -91,7 +91,7 @@ function withRepo(fn) {
       path.join(repo, 'skills', 'demo', 'SKILL.md'),
       '---\nname: demo\ndescription: fixture skill\n---\n\n# demo\n'
     );
-    fs.writeFileSync(path.join(repo, '.gitignore'), '.worktree/\nskills/**/_dev/\n');
+    fs.writeFileSync(path.join(repo, '.gitignore'), '.worktree/\nskills/**/_dev/\n.claude/\n');
     fs.writeFileSync(path.join(repo, 'CHANGELOG.md'), '# Changelog\n');
     git(repo, ['add', '-A']);
     git(repo, ['commit', '-m', 'chore: seed test repo']);
@@ -349,6 +349,192 @@ test('_dev never appears in git status or the tracked file list', () =>
     assert.equal(git(worktree, ['status', '--porcelain']).stdout, '');
     assert.equal(git(repo, ['status', '--porcelain']).stdout, '');
     assert.ok(!git(worktree, ['ls-files']).stdout.includes('_dev'));
+  }));
+
+// ---------- full flow: plan -> UAT -> ready -> merge -> cleanup ----------
+
+function linkScriptInRepo(repo) {
+  const dir = path.join(repo, 'scripts');
+  fs.mkdirSync(dir, { recursive: true });
+  const target = path.join(dir, 'link-skill.mjs');
+  fs.copyFileSync(path.join(ROOT, 'scripts', 'link-skill.mjs'), target);
+  return target;
+}
+
+function fakeGh(args, { cwd, env }) {
+  const r = run([FAKE_GH, ...args], { cwd, env });
+  assert.equal(r.status, 0, `fake gh ${args.join(' ')} failed:\n${r.stderr}`);
+  return r;
+}
+
+function mergeAndCleanup({ repo, worktree, linkScript, env, branch }) {
+  const flowEnv = { ...env, FAKE_GH_REPO: repo, FAKE_GH_WORKTREE: worktree };
+  const sandboxDir = path.join(repo, '.claude', 'skills');
+  const worktreeLinkDir = path.join(worktree, '.claude', 'skills');
+
+  const draftMerge = run([FAKE_GH, 'pr', 'merge', '1', '--rebase'], {
+    cwd: repo,
+    env: flowEnv,
+  });
+  assert.notEqual(draftMerge.status, 0, 'a draft PR must not merge');
+  assert.match(draftMerge.stderr, /still a draft/);
+
+  fakeGh(['pr', 'ready', '1'], { cwd: repo, env: flowEnv });
+  fakeGh(['pr', 'merge', '1', '--rebase'], { cwd: repo, env: flowEnv });
+
+  git(repo, ['fetch', 'origin']);
+  ok([linkScript, 'demo', 'main', '--link-dir', sandboxDir], { cwd: repo });
+  ok([linkScript, 'remove', 'demo', '--link-dir', worktreeLinkDir], { cwd: worktree });
+  git(repo, ['worktree', 'remove', worktree]);
+  git(repo, ['pull', '--ff-only', 'origin', 'main']);
+  git(repo, ['branch', '-D', branch]);
+  git(repo, ['push', 'origin', '--delete', branch]);
+  return sandboxDir;
+}
+
+function assertMergedAndClean({ repo, worktree, branch, sandboxDir }) {
+  assert.ok(!fs.existsSync(worktree), `worktree still exists: ${worktree}`);
+  assert.equal(
+    git(repo, ['worktree', 'list', '--porcelain']).stdout.match(/^worktree /gm).length,
+    1,
+    'only the main checkout should remain'
+  );
+  assert.equal(git(repo, ['branch', '--list', branch]).stdout, '');
+  assert.equal(git(repo, ['branch', '-r', '--list', `origin/${branch}`]).stdout, '');
+  assert.ok(!fs.existsSync(path.join(repo, 'skills', 'demo', '_dev')));
+
+  const norm = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+  assert.equal(
+    norm(fs.realpathSync(path.join(sandboxDir, 'demo'))),
+    norm(fs.realpathSync(path.join(repo, 'skills', 'demo'))),
+    'the sandbox link must point back at the main checkout'
+  );
+}
+
+test('fake-gh merge refuses drafts and --delete-branch removes the remote branch', () =>
+  withRepo(({ repo, ghState, env }) => {
+    planSave(repo, env, '# Plan: first\n');
+    const worktree = path.join(repo, '.worktree', 'demo', 'first');
+    fs.writeFileSync(
+      path.join(worktree, 'skills', 'demo', 'check.mjs'),
+      'export const ok = true;\n'
+    );
+    git(worktree, ['add', 'skills/demo/check.mjs']);
+    git(worktree, ['commit', '-m', 'feat(demo): add check']);
+    git(worktree, ['push', 'origin', 'demo/first']);
+
+    const flowEnv = { ...env, FAKE_GH_REPO: repo, FAKE_GH_WORKTREE: worktree };
+    const draft = run([FAKE_GH, 'pr', 'merge', '1', '--rebase'], { cwd: repo, env: flowEnv });
+    assert.notEqual(draft.status, 0);
+    assert.match(draft.stderr, /still a draft/);
+
+    fakeGh(['pr', 'ready', '1'], { cwd: repo, env: flowEnv });
+    fakeGh(['pr', 'merge', '1', '--rebase', '--delete-branch'], { cwd: repo, env: flowEnv });
+
+    const gh = readGh(ghState);
+    assert.equal(gh.prs[0].state, 'MERGED');
+    assert.deepEqual(gh.deletedBranches, ['demo/first']);
+    assert.equal(git(repo, ['branch', '-r', '--list', 'origin/demo/first']).stdout, '');
+    assert.equal(git(repo, ['rev-parse', '--abbrev-ref', 'HEAD']).stdout, 'main');
+    assert.equal(
+      git(repo, ['show', 'main:skills/demo/check.mjs']).stdout,
+      'export const ok = true;'
+    );
+  }));
+
+test('flow A: plan -> UAT -> ready -> rebase merge -> cleanup -> next item', () =>
+  withRepo(({ repo, ghState, env }) => {
+    const worktree = path.join(repo, '.worktree', 'demo', 'first');
+    const linkScript = linkScriptInRepo(repo);
+
+    planSave(repo, env, '# Plan: first\n');
+
+    fs.writeFileSync(
+      path.join(worktree, 'skills', 'demo', 'check.mjs'),
+      'export const ok = true;\n'
+    );
+    git(worktree, ['add', 'skills/demo/check.mjs']);
+    git(worktree, ['commit', '-m', 'feat(demo): add check']);
+    git(worktree, ['push', 'origin', 'demo/first']);
+    ok(['--check', path.join(worktree, 'skills', 'demo', 'check.mjs')]);
+
+    const sandboxDir = path.join(repo, '.claude', 'skills');
+    ok([linkScript, 'demo', worktree, '--link-dir', sandboxDir], { cwd: repo });
+    ok(
+      [linkScript, 'demo', worktree, '--link-dir', path.join(worktree, '.claude', 'skills')],
+      { cwd: worktree }
+    );
+
+    uatSave(worktree, env, []);
+    const repeat = uatSave(worktree, env, []);
+    assert.match(repeat.stdout, /already present/);
+    assert.match(repeat.stdout, /already posted/);
+    ok([WORKITEM, 'uat', 'save', '--final', '--approval', 'yes', '--gh', FAKE_GH], {
+      cwd: worktree,
+      env,
+    });
+    const status = ok([WORKITEM, 'status', '--gh', FAKE_GH], { cwd: worktree, env });
+    assert.match(status.stdout, /^pending: 0$/m);
+
+    mergeAndCleanup({ repo, worktree, linkScript, env, branch: 'demo/first' });
+    assertMergedAndClean({ repo, worktree, branch: 'demo/first', sandboxDir });
+    assert.equal(
+      git(repo, ['show', 'main:skills/demo/check.mjs']).stdout,
+      'export const ok = true;'
+    );
+
+    planSave(repo, env, '# Plan: second\n', 'second');
+    assert.ok(fs.existsSync(path.join(repo, '.worktree', 'demo', 'second')));
+    assert.equal(git(repo, ['rev-parse', '--abbrev-ref', 'HEAD']).stdout, 'main');
+    assert.equal(readGh(ghState).prs.length, 2);
+  }));
+
+test('flow B: main advances while the work item is open', () =>
+  withRepo(({ repo, env }) => {
+    const worktree = path.join(repo, '.worktree', 'demo', 'first');
+    const linkScript = linkScriptInRepo(repo);
+
+    planSave(repo, env, '# Plan: first\n');
+
+    fs.writeFileSync(path.join(repo, 'MAIN.md'), 'main side\n');
+    git(repo, ['add', 'MAIN.md']);
+    git(repo, ['commit', '-m', 'docs: main side change']);
+    git(repo, ['push', 'origin', 'main']);
+
+    fs.writeFileSync(
+      path.join(worktree, 'skills', 'demo', 'check.mjs'),
+      'export const ok = true;\n'
+    );
+    git(worktree, ['add', 'skills/demo/check.mjs']);
+    git(worktree, ['commit', '-m', 'feat(demo): add check']);
+
+    git(worktree, ['fetch', 'origin']);
+    git(worktree, ['merge', 'origin/main', '-m', 'merge: sync with main']);
+    git(worktree, ['push', 'origin', 'demo/first']);
+    ok(['--check', path.join(worktree, 'skills', 'demo', 'check.mjs')]);
+
+    const sandboxDir = path.join(repo, '.claude', 'skills');
+    ok([linkScript, 'demo', worktree, '--link-dir', sandboxDir], { cwd: repo });
+    ok(
+      [linkScript, 'demo', worktree, '--link-dir', path.join(worktree, '.claude', 'skills')],
+      { cwd: worktree }
+    );
+
+    uatSave(worktree, env, []);
+    ok([WORKITEM, 'uat', 'save', '--final', '--approval', 'yes', '--gh', FAKE_GH], {
+      cwd: worktree,
+      env,
+    });
+    const status = ok([WORKITEM, 'status', '--gh', FAKE_GH], { cwd: worktree, env });
+    assert.match(status.stdout, /^pending: 0$/m);
+
+    const sandbox = mergeAndCleanup({ repo, worktree, linkScript, env, branch: 'demo/first' });
+    assertMergedAndClean({ repo, worktree, branch: 'demo/first', sandboxDir: sandbox });
+    assert.equal(git(repo, ['show', 'main:MAIN.md']).stdout, 'main side');
+    assert.equal(
+      git(repo, ['show', 'main:skills/demo/check.mjs']).stdout,
+      'export const ok = true;'
+    );
   }));
 
 console.log(`\n${passed} passed, ${failed} failed`);
