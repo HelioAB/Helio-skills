@@ -102,6 +102,7 @@
 - `node scripts/workitem.mjs sync`：重试失败的远端同步。
 - `node scripts/workitem.mjs status`：分支/worktree/PR/pending 状态。
 - 用户说“保存为 plan/更新 plan/记录方案”时运行 `plan save`；本地优先，gh 失败留 pending。
+- 面向用户的触发词与最短用法见 `README.md`。agent 必须把「开始 `<skill>` 的 `<topic>`」「UAT 通过/有问题」「同步 main」「收尾」「可以合并」映射到对应动作；用户说「可以合并」后自行执行「关闭与清理顺序」，不再要求用户复制命令。
 - sandbox 场地执行 `uat save` 时用 `--repo <worktree>` 指向工作项 worktree。
 - `workitem` 只服务 `<skill>/<topic>` 工作项；`repo/<topic>` 这类仓库级变更保持手动，按同一套门槛（plan/CI/UAT/self-review）执行，不扩 `workitem`。
 - 权限只放行 `node scripts/{workitem,check,link-skill}.mjs`；不要直接允许 `gh`。

@@ -137,6 +137,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Workflow docs split by audience: `README.md` is now the user-facing manual —
+  the five short phrases (start, UAT, sync main, wrap up, merge), the two
+  gates, venues/records, and optional manual commands — while `AGENTS.md`
+  binds those phrases to agent actions and keeps the normative rules. Saying
+  "可以合并" is the single merge authorization; the agent runs the cleanup
+  order itself instead of handing the user a command list.
 - GitHub Flow hardening (from `docs/plan-github-flow-followups.md`): closing a
   work item now starts with `gh pr ready <n>` — a draft PR cannot merge — and
   follows an 11-step, order-bound cleanup: rebase merge, point the sandbox
