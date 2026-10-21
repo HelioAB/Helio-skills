@@ -150,6 +150,8 @@ if (args[0] === 'pr' && args[1] === 'list') {
     process.exit(1);
   }
   if (pr.draft) {
+    state.calls.at(-1).failed = true;
+    save();
     console.error('fake gh: Pull request is still a draft');
     process.exit(1);
   }
