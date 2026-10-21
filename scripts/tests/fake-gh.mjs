@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // fake-gh — minimal gh stand-in for scripts/tests/run.mjs.
 // State lives in $FAKE_GH_STATE (JSON). Supported:
-//   gh pr list --head <branch> --state all --json number,url,state
+//   gh pr list --head <branch> --state all --json number,url,state,isDraft
 //   gh pr create --draft --title <t> --body-file <f> --base main --head <branch>
 //   gh pr edit <n> --body-file <f>
 //   gh pr comment <n> --body-file <f>
-//   gh pr view <n> --json number,url,state
+//   gh pr view <n> --json number,url,state,isDraft
 //   gh pr ready <n>
 //   gh pr merge <n> --rebase [--delete-branch]
 // $FAKE_GH_FAIL is a comma-separated list of command substrings that must fail,
@@ -89,7 +89,7 @@ if (args[0] === 'pr' && args[1] === 'list') {
   const head = flag('--head');
   const prs = state.prs
     .filter((p) => !head || p.branch === head)
-    .map((p) => ({ number: p.number, url: p.url, state: p.state }));
+    .map((p) => ({ number: p.number, url: p.url, state: p.state, isDraft: p.draft }));
   console.log(JSON.stringify(prs));
 } else if (args[0] === 'pr' && args[1] === 'create') {
   const branch = flag('--head');
@@ -133,7 +133,14 @@ if (args[0] === 'pr' && args[1] === 'list') {
     console.error(`fake gh: no pull request #${args[2]}`);
     process.exit(1);
   }
-  console.log(JSON.stringify({ number: pr.number, url: pr.url, state: pr.state }));
+  console.log(
+    JSON.stringify({
+      number: pr.number,
+      url: pr.url,
+      state: pr.state,
+      isDraft: pr.draft,
+    })
+  );
 } else if (args[0] === 'pr' && args[1] === 'ready') {
   const pr = findPr(args[2]);
   if (!pr) {
