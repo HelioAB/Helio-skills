@@ -4,7 +4,7 @@ Actively build and sharpen the project's domain model as you design. This is the
 
 ## File structure
 
-Most repos have a single context: one root `CONTEXT.md` and one `docs/adr/`. Multi-context repos keep a root `CONTEXT-MAP.md` pointing to each context's own files. Everything is created lazily, at the first write. Layout details and formats: [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md) and [ADR-FORMAT.md](./ADR-FORMAT.md).
+All docs live under one base directory B: `B/CONTEXT.md` and `B/adr/`; a multi-context repo keeps `B/CONTEXT-MAP.md` pointing to each context's own file inside its source subtree. SKILL.md settles B when docs mode activates — a user-named location wins, existing glossary and ADR files are followed where they live, a bare topic folder gets a topic-named subdirectory, and a project root with none of these is asked first. Everything is created lazily, at the first write. Layout details and formats: [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md) and [ADR-FORMAT.md](./ADR-FORMAT.md).
 
 ## During the session
 
