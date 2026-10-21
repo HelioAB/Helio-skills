@@ -57,13 +57,13 @@
 - `skills/<skill>/_dev/` 是当前 worktree 内的 per-branch 工作副本（gitignored，随 worktree 删除），不是记录。
 - 持久记录：PR 正文（plan）、PR 评论（UAT）、`CHANGELOG.md`（仓库内唯一持久摘要）。
 - 流程：
-  1. 讨论方案；说“保存为 plan” → `node scripts/workitem.mjs plan save`（建分支/worktree、写 `_dev/plan.md`、空提交 + push、开 draft PR）。
+  1. 讨论方案；说“保存为 plan” → `node scripts/workitem.mjs plan save`（建分支/worktree、写 `_dev/plan.md`、空提交 + push、开 draft PR）。开工前先 `git fetch origin` 确认本地 `main` 与 `origin/main` 同步；落后就先处理，不要从陈旧 `main` 建分支。
   2. 实现；每次 push 跑 `node scripts/check.mjs`（门槛 1）。
   3. 建 UAT 链接：worktree 自链，或 sandbox 的 `.claude/skills/<skill>` 指向 worktree skill。
   4. UAT（门槛 2）：真实使用；每轮结束运行 `node scripts/workitem.mjs uat save`（`_dev/test-log.md` + PR 评论）。
   5. 缺陷：同分支提交，重跑门槛 1，重新验收。新需求：新工作项。
-  6. 关闭前：CHANGELOG 吸入结论；`node scripts/workitem.mjs uat save --final`；CI 绿；self-review。
-  7. merge（rebase）→ 删除分支/worktree；若用 sandbox，链接指回 `skills/<skill>`。没有 close 提交。
+  6. 关闭前：CHANGELOG 吸入结论；`node scripts/workitem.mjs uat save --final`；`node scripts/workitem.mjs status` 必须显示 `pending: 0`（否则先 `sync`）；CI 绿；self-review。
+  7. `gh pr ready <n>` 把 draft 转 ready，再按下面的「关闭与清理顺序」合并、清理。没有 close 提交。
 - 同一 skill 同时只开一条分支；不同 skill 可并行。
 - 门槛 1（CI）：结构/打包、frontmatter、相对链接、脚本语法、夹具回归、仓库不变式；不调用 LLM。
 - 门槛 2（UAT）：声明的 UAT 场地真实使用 + 输出检查 + 用户认可/豁免。
@@ -74,6 +74,26 @@
   （`node scripts/link-skill.mjs remove <skill> --link-dir <worktree>/.claude/skills`）：
   Windows 上递归删除会沿 junction 删到主检出。
 
+### 关闭与清理顺序（不可换）
+
+1. 门槛 2 通过、`node scripts/workitem.mjs status` 显示 `pending: 0`、CI 绿、self-review 完成、用户认可。
+2. `gh pr ready <n>`（draft PR 不能直接 merge）。
+3. `gh pr merge <n> --rebase`；worktree 还在时不要加 `--delete-branch`。
+4. `git fetch origin`。
+5. 用 sandbox 时：`node scripts/link-skill.mjs <skill> main --link-dir <sandbox>/.claude/skills`。
+6. `node scripts/link-skill.mjs remove <skill> --link-dir <worktree>/.claude/skills`。
+7. `git worktree remove <worktree>`。
+8. 在主检出：`git pull --ff-only origin main`。
+9. `git branch -D <skill>/<topic>`（rebase merge 后 SHA 已变，`-d` 会拒绝）。
+10. `git push origin --delete <skill>/<topic>`（若远端未自动删除）。
+11. 验证：`git worktree list` 无残留、`git branch -a` 无该分支、`link-skill status` 目标正确。
+
+第 6 步不能省：Windows 上 `git worktree remove` 会沿 junction 删除主检出的 skill（本项目已实际发生过一次）。
+
+### main 前进时的同步
+
+工作项活到 UAT 结束期间 `main` 可能前进。需要同步时在 worktree 内 `git fetch origin` + `git merge origin/main`，再 push；**不 rebase、不 force push**。最终仍由 GitHub 的 rebase merge 保持 `main` 线性。只有用户明确允许时才用 `git rebase origin/main` + `git push --force-with-lease`。
+
 ## 工作项自动化
 
 - `node scripts/workitem.mjs plan save`：写 `_dev/plan.md`，建/更新 draft PR 正文；工作项不存在时自动创建分支/worktree。plan 正文从 stdin（推荐 heredoc）读取；为空时沿用已有的 `_dev/plan.md`。
@@ -83,6 +103,7 @@
 - `node scripts/workitem.mjs status`：分支/worktree/PR/pending 状态。
 - 用户说“保存为 plan/更新 plan/记录方案”时运行 `plan save`；本地优先，gh 失败留 pending。
 - sandbox 场地执行 `uat save` 时用 `--repo <worktree>` 指向工作项 worktree。
+- `workitem` 只服务 `<skill>/<topic>` 工作项；`repo/<topic>` 这类仓库级变更保持手动，按同一套门槛（plan/CI/UAT/self-review）执行，不扩 `workitem`。
 - 权限只放行 `node scripts/{workitem,check,link-skill}.mjs`；不要直接允许 `gh`。
 
 ## 分支与提交
