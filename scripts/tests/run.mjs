@@ -365,8 +365,7 @@ function linkScriptInRepo(repo) {
   fs.mkdirSync(dir, { recursive: true });
   const target = path.join(dir, 'link-skill.mjs');
   fs.copyFileSync(path.join(ROOT, 'scripts', 'link-skill.mjs'), target);
-  // The work item close preflight requires a clean main checkout, so the
-  // fixture must be tracked instead of sitting there untracked.
+  // Track the fixture so the main checkout starts clean, as in a real repo.
   git(repo, ['add', 'scripts/link-skill.mjs']);
   git(repo, ['commit', '-m', 'chore: add link-skill fixture']);
   git(repo, ['push', 'origin', 'main']);
@@ -696,6 +695,22 @@ test('close refuses a dirty worktree', () =>
     assert.match(r.stderr, /uncommitted changes/);
     assert.equal(readGh(env.FAKE_GH_STATE).prs[0].state, 'OPEN');
     assert.ok(fs.existsSync(worktree));
+  }));
+
+test('close does not block on unrelated main-checkout changes', () =>
+  withRepo(({ repo, ghState, env }) => {
+    const worktree = path.join(repo, '.worktree', 'demo', 'first');
+    linkScriptInRepo(repo);
+    planSave(repo, env, '# Plan: first\n');
+    addContentCommit(worktree);
+
+    // Unrelated dirt in the main checkout must not block close.
+    fs.writeFileSync(path.join(repo, 'notes.txt'), 'scratch\n');
+
+    const r = closeWorkItem({ repo, worktree, env });
+    assert.match(r.stdout, /close complete/);
+    assert.equal(readGh(ghState).prs[0].state, 'MERGED');
+    assert.ok(fs.existsSync(path.join(repo, 'notes.txt')));
   }));
 
 console.log(`\n${passed} passed, ${failed} failed`);
