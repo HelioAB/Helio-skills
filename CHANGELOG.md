@@ -10,14 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Work-item close automation (`scripts/workitem.mjs close`): preflights
-  `pending: 0`, a clean worktree, and a clean main checkout on `main`, and
-  refuses `repo/<topic>`, CLOSED PRs, and dirty worktrees. With `--yes` it runs
-  ready → rebase merge → sandbox link restore (`--sandbox <dir>`) → worktree
-  self-link removal → worktree removal → `pull --ff-only` → local/remote branch
-  deletion → verification; dry-run is the default. An already-MERGED PR skips
-  ready/merge so an interrupted close can resume. `fake-gh` now reports
-  `isDraft`, and the suite adds dry-run, pending-blocker, happy-path,
-  resume-after-merge, non-work-item-branch, and dirty-worktree scenarios.
+  `pending: 0`, a clean worktree, and a main checkout on `main`, and refuses
+  `repo/<topic>`, CLOSED PRs, and dirty worktrees. With `--yes` it runs ready →
+  rebase merge → `fetch` + `pull --ff-only` → sandbox link restore
+  (`--sandbox <dir>`) → worktree self-link removal → worktree removal →
+  local/remote branch deletion → verification; dry-run is the default.
+  Unrelated changes in the main checkout do not block close, and the pull runs
+  before cleanup so a failed pull leaves the worktree in place. An
+  already-MERGED PR skips ready/merge so an interrupted close can resume.
+  `fake-gh` now reports `isDraft`, and the suite adds dry-run,
+  pending-blocker, happy-path, resume-after-merge, non-work-item-branch,
+  dirty-worktree, and unrelated-main-change scenarios.
 - Full-flow work-item simulation (`scripts/tests/run.mjs`): `fake-gh` now
   models `gh pr ready` and `gh pr merge --rebase` (a draft merge fails with
   "Pull request is still a draft", the PR becomes `MERGED`, and
@@ -146,6 +149,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Workflow simplification (P0, `docs/plan-workflow-simplify.md`): the
+  user-facing success path is now two phrases — start, and 「UAT 通过，可以合并」
+  — and 「收尾」/「同步 main」 are no longer user triggers. `README.md` and
+  `AGENTS.md` state that 「可以合并」 is the only authorization and that the
+  agent runs `close --yes` directly instead of presenting a dry-run first;
+  final-approval comments and mandatory self-review comments are gone (the
+  agent reviews internally and comments only when it finds something), and
+  nothing waits for the post-merge `main` push CI. `close` no longer blocks on
+  unrelated changes in the main checkout, and `pull --ff-only` now runs right
+  after `fetch` — before link/worktree cleanup — so a failed pull leaves the
+  worktree in place and close can be rerun.
 - Closing a work item is now one command: `README.md` and `AGENTS.md` point at
   `workitem close` (dry-run first, `--yes` on the user's 「可以合并」), while the
   11-step order remains the normative fallback.
