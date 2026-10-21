@@ -1,6 +1,6 @@
 # 开发流程精简（workflow simplification）
 
-- **状态**：P0 已完成（PR #3，rebase merge `461616c`，2026-10-21）；P1–P3 待决策
+- **状态**：P0 已完成（PR #3，rebase merge `461616c`，2026-10-21）；P1–P2 待决策；P3 的 main CI 已决（nightly schedule）
 - **日期**：2026-10-21
 - **基线**：`main` @ `9cdb6f6`（PR #2 已 rebase merge；`repo/workitem-close` 本地/远端均已删除）
 - **范围**：P0 改 `README.md`、`AGENTS.md`、`scripts/workitem.mjs`、`scripts/tests/run.mjs`、`CHANGELOG.md`；P1/P2 各开独立工作项；P3 只讨论
@@ -140,7 +140,9 @@ P0 只做低风险部分；P1（删 `sync`/`pending`）是行为变更，单独�
 2. **AGENTS 的 11 步与脚本双维护**：`close` 已测试后，11 步可压缩为“脚本即顺序，失败时按 `run:` 输出兜底”，细节留在代码里。
 3. **worktree + 链接切换**：UAT 主要在独立 sandbox 时保留；否则可改为 main 检出上开分支，消掉 `.worktree`、链接移除顺序和 Windows junction 风险。
 4. **空提交**：只为开 draft PR 而生；可保留，或延后到第一次内容 push 再开 PR。
-5. **main push CI**：保留 workflow 但不等待；或去掉 `push` 触发（代价：直接提交 main 的文档/小修失去 CI 兜底）。
+5. **main push CI**：已决（2026-10-21）——删除 `push` 触发，保留 `pull_request`，加每天一次的
+   `schedule` 审计 `main`（`17 14 * * *` UTC）。merge 不再产生 run；直接提交 main 的改动由当晚
+   nightly run 覆盖。
 
 ## 3. 目标流程
 
@@ -175,7 +177,7 @@ agent: 同分支修复 → 重跑门槛 → 报告可再验收
 | D6 | test-log | P0 保留；P2 评估降级为可选草稿，UAT 只留 PR 评论 |
 | D7 | sync/pending | P1 整体删除；失败即非零退出，重跑同一命令 |
 | D8 | `repo/<topic>` | P0 只改文档为“agent 静默执行”；P2 再评估是否纳入 `close` |
-| D9 | main push CI | 不作为 gate、不等待；workflow 可保留 |
+| D9 | main push CI | 删除 `push` 触发，改每天一次 `schedule` 审计；不作为 gate、不等待 |
 | D10 | worktree 去留 | P3 讨论，P0/P1/P2 不动 |
 
 若新 session 没收到选择，按推荐默认执行，并在报告里注明。
@@ -293,7 +295,8 @@ sh .githooks/pre-commit
 
 - worktree 去留（改为 main 检出上开分支）。
 - 空提交与 PR 创建时机。
-- `main` push CI 是否保留 `push` 触发。
+- ~~`main` push CI 是否保留 `push` 触发。~~ 已决（2026-10-21）：删除 `push` 触发，改 nightly
+  `schedule`；见 D9、§2.5 第 5 条与 CHANGELOG。
 
 ## 6. 验收清单（P0）
 
@@ -315,6 +318,8 @@ sh .githooks/pre-commit
 ### 7.2 不要等待 main push CI
 
 2026-10-21 实测：merge 后 `main` 的 push run 超过 12 分钟仍未出现在 Actions 列表。PR CI 与本地同一套 `check` 已通过；它是审计记录，不是 gate。查一次即可，不要 sleep 轮询。
+
+后续（同日）：`push` 触发已删除，`main` 改由 nightly `schedule` 审计。本节仅存历史，不再有需要等待的 merge push run。
 
 ### 7.3 权限与 gh
 

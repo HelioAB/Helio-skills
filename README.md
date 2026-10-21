@@ -27,6 +27,8 @@ The skills I personally use in real projects. One skill per directory under `ski
 
 两者都过即进入合并；`pending: 0` 与 self-review 是 agent 的内部步骤，不需要你检查。
 
+门槛 1 在 PR 上运行；合并后的 `main` 每天由 nightly schedule 审计一次，不需要你等待。
+
 ## 场地与记录
 
 - 日常在 `.worktree/<skill>/<topic>` 里实现；`skills/<skill>/_dev/` 是 gitignored 的本地工作副本，随 worktree 删除。

@@ -1,8 +1,9 @@
 name: CI
 on:
   pull_request:
-  push:
-    branches: [main]
+  schedule:
+    # Nightly audit of main (22:17 China time); merges no longer trigger a run.
+    - cron: '17 14 * * *'
 jobs:
   check:
     runs-on: ubuntu-latest

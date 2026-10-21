@@ -149,6 +149,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- CI triggers: `main` no longer runs CI on every push. The workflow keeps the
+  `pull_request` gate and adds a nightly `schedule` audit of `main`
+  (`17 14 * * *` UTC, 22:17 China time). Merges no longer produce a GitHub
+  run to wait for; a direct commit to `main` is covered by the next nightly
+  run. Decided in `docs/plan-workflow-simplify.md` (D9): a daily audit is
+  simpler than relying on GitHub's delayed — and sometimes dropped —
+  merge-generated push events.
 - Workflow simplification (P0, `docs/plan-workflow-simplify.md`): the
   user-facing success path is now two phrases — start, and 「UAT 通过，可以合并」
   — and 「收尾」/「同步 main」 are no longer user triggers. `README.md` and

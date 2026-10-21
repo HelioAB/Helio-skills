@@ -64,9 +64,9 @@ draft 开发阶段**不套用**下面的 GitHub Flow：`drafts/` 的 `_dev/`、`
   1. 开始：讨论方案；说“保存为 plan” → `node scripts/workitem.mjs plan save`（建分支/worktree、写 `_dev/plan.md`、空提交 + push、开 draft PR）。开工前先 `git fetch origin` 确认本地 `main` 与 `origin/main` 同步；落后就先处理，不要从陈旧 `main` 建分支。
   2. 实现：同分支提交；每次 push 跑 `node scripts/check.mjs`（门槛 1）。缺陷同分支修复，重跑门槛 1，重新验收；新需求开新工作项。
   3. UAT（门槛 2）：建链接后真实使用；每轮结束运行 `node scripts/workitem.mjs uat save`（`_dev/test-log.md` + PR 评论），每轮最多一条评论；`--final` 不再是必需产物。
-  4. 合并：用户说「可以合并」后，agent 更新 CHANGELOG、确认 PR CI 绿、直接跑 `close --yes`，然后报告结果。不等待 merge 后的 `main` push CI，不交命令清单。
+  4. 合并：用户说「可以合并」后，agent 更新 CHANGELOG、确认 PR CI 绿、直接跑 `close --yes`，然后报告结果。merge 后不再触发 `main` 的 push CI；`main` 由每天的 nightly schedule 审计一次，不等待，不交命令清单。
 - 同一 skill 同时只开一条分支；不同 skill 可并行。
-- 门槛 1（CI）：结构/打包、frontmatter、相对链接、脚本语法、夹具回归、仓库不变式；不调用 LLM。
+- 门槛 1（CI）：结构/打包、frontmatter、相对链接、脚本语法、夹具回归、仓库不变式；不调用 LLM。PR 上由 `pull_request` 触发；`main` 每天由 `schedule` 审计一次，merge 本身不触发 run。
 - 门槛 2（UAT）：声明的 UAT 场地真实使用 + 输出检查 + 用户认可/豁免。
 - 链接命令：worktree 自链 `node scripts/link-skill.mjs <skill> <worktree> --link-dir <worktree>/.claude/skills`；
   sandbox 用同一命令改 `--link-dir <sandbox>/.claude/skills`；合入后
