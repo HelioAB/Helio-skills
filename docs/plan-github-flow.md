@@ -515,3 +515,11 @@ node scripts/workitem.mjs status
 - 提交前跑 `git diff --check` 和 `.githooks/pre-commit`。
 - 未获用户指示不要 push；merge 前确认所有门槛通过。
 - 迁移后的第一个 skill 工作项真实 dogfood `workitem.mjs`；在此之前不要宣称自动化已验证。
+
+## 7. 执行偏差
+
+- 2026-10-21：`scripts/link-skill.mjs` 增加 `remove <skill> [--link-dir <dir>]`
+  子命令（§3.3 未列出）。实测 `git worktree remove --force` 会跟随 worktree
+  内的 junction 删除主检出 `skills/<skill>` 的内容；本次验证中已实际发生，
+  随后从 HEAD 恢复。`remove` 只删除链接本身；worktree 清理步骤改为先
+  `remove` 链接，再 `git worktree remove`。CHANGELOG 与 AGENTS 同步记录。

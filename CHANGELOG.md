@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- UAT link helper (`scripts/link-skill.mjs`): `status` lists each
+  `.claude/skills` link and whether its target exists; `<skill> main` points a
+  link at the main worktree's `skills/<skill>`; `<skill> <worktree-path>` points
+  it at that worktree's copy. Replacing removes only the link itself (Windows
+  junction, POSIX symlink) and refuses real directories/files. `remove <skill>`
+  deletes only the link and is idempotent — run it before `git worktree remove`,
+  because recursive deletion can follow a junction into the main checkout.
+  `--link-dir` targets a worktree or sandbox, so the main checkout's links stay
+  on `main`.
 - Deterministic gate 1 (`scripts/check.mjs` + `.github/workflows/ci.yml`):
   one zero-dependency command checks repo invariants (CLAUDE.md pointer, no
   tracked `skills/**/_dev` or `_sources`, kebab-case skill dirs), skill
