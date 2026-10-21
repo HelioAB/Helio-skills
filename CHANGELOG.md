@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Work-item close automation (`scripts/workitem.mjs close`): preflights
+  `pending: 0`, a clean worktree, and a clean main checkout on `main`, and
+  refuses `repo/<topic>`, CLOSED PRs, and dirty worktrees. With `--yes` it runs
+  ready → rebase merge → sandbox link restore (`--sandbox <dir>`) → worktree
+  self-link removal → worktree removal → `pull --ff-only` → local/remote branch
+  deletion → verification; dry-run is the default. An already-MERGED PR skips
+  ready/merge so an interrupted close can resume. `fake-gh` now reports
+  `isDraft`, and the suite adds dry-run, pending-blocker, happy-path,
+  resume-after-merge, non-work-item-branch, and dirty-worktree scenarios.
 - Full-flow work-item simulation (`scripts/tests/run.mjs`): `fake-gh` now
   models `gh pr ready` and `gh pr merge --rebase` (a draft merge fails with
   "Pull request is still a draft", the PR becomes `MERGED`, and
@@ -137,6 +146,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Closing a work item is now one command: `README.md` and `AGENTS.md` point at
+  `workitem close` (dry-run first, `--yes` on the user's 「可以合并」), while the
+  11-step order remains the normative fallback.
 - Workflow scope clarified: the GitHub Flow in `README.md`/`AGENTS.md` applies
   only to graduated skills under `skills/`. Draft-stage work under `drafts/`
   keeps its independent path — `_dev/` and `_sources/` are tracked, progress

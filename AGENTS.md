@@ -94,6 +94,11 @@ draft 开发阶段**不套用**下面的 GitHub Flow：`drafts/` 的 `_dev/`、`
 
 第 6 步不能省：Windows 上 `git worktree remove` 会沿 junction 删除主检出的 skill（本项目已实际发生过一次）。
 
+自动化路径：用户说「可以合并」后运行
+`node scripts/workitem.mjs close [--sandbox <dir>]` —— 默认 dry-run，先把步骤给用户看；
+`--yes` 才执行。上面 11 步仍是规范顺序，也是脚本失败时的兜底。`repo/<topic>` 不走
+`close`。
+
 ### main 前进时的同步
 
 工作项活到 UAT 结束期间 `main` 可能前进。需要同步时在 worktree 内 `git fetch origin` + `git merge origin/main`，再 push；**不 rebase、不 force push**。最终仍由 GitHub 的 rebase merge 保持 `main` 线性。只有用户明确允许时才用 `git rebase origin/main` + `git push --force-with-lease`。
@@ -103,6 +108,11 @@ draft 开发阶段**不套用**下面的 GitHub Flow：`drafts/` 的 `_dev/`、`
 - `node scripts/workitem.mjs plan save`：写 `_dev/plan.md`，建/更新 draft PR 正文；工作项不存在时自动创建分支/worktree。plan 正文从 stdin（推荐 heredoc）读取；为空时沿用已有的 `_dev/plan.md`。
 - `node scripts/workitem.mjs uat save ...`：追加 `_dev/test-log.md`，发 PR 评论；每轮 UAT 后自动运行。
 - `node scripts/workitem.mjs uat save --final ...`：关闭前的最终认可/豁免评论。
+- `node scripts/workitem.mjs close [--sandbox <dir>] [--dry-run | --yes]`：预检
+  `pending: 0`、worktree 与主检出干净、PR `OPEN`/`MERGED`，然后 `--yes` 执行
+  ready → rebase merge → sandbox 链接恢复 → worktree 内链接移除 → worktree 移除 →
+  `pull --ff-only` → 本地/远端分支删除 → 验证。默认 dry-run；已 `MERGED` 的 PR
+  跳过 ready/merge，可续跑。
 - `node scripts/workitem.mjs sync`：重试失败的远端同步。
 - `node scripts/workitem.mjs status`：分支/worktree/PR/pending 状态。
 - 用户说“保存为 plan/更新 plan/记录方案”时运行 `plan save`；本地优先，gh 失败留 pending。
