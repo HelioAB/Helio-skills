@@ -47,12 +47,12 @@
    - CHANGELOG `[Unreleased]`：Added 段顶部记升格条目（能力一句话 +
      `Graduated from drafts/<name> after <门槛>`）；test-log 中暂不处置的已知边界以
      "Parked, not applied" 记入——这是它们活过 `_dev/` 丢弃的唯一去处。
-3. 开 draft PR；门槛 1（CI）通过、门槛 2（UAT）认可后 rebase merge 到 `main`；
+3. 开 draft PR；本地门槛 1 通过、门槛 2（UAT）认可后 rebase merge 到 `main`；
    merge 后删除分支/worktree。没有 close 提交。
 
 draft 开发阶段**不套用**下面的 GitHub Flow：`drafts/` 的 `_dev/`、`_sources/` 入库，按
 `_dev/test-log.md` 的自定门槛推进；只有升格提交及升格后的迭代进入 `<skill>/<topic>`
-工作项 + CI/UAT。`workitem` 的 `plan save`/`uat save`/`close` 只接受 `skills/<skill>`。
+工作项 + 门槛 1/UAT。`workitem` 的 `plan save`/`uat save`/`close` 只接受 `skills/<skill>`。
 
 ## 已升格 skill 的迭代（GitHub Flow）
 
@@ -62,11 +62,11 @@ draft 开发阶段**不套用**下面的 GitHub Flow：`drafts/` 的 `_dev/`、`
 - 持久记录：PR 正文（plan）、PR 评论（UAT）、`CHANGELOG.md`（仓库内唯一持久摘要）。最终认可不另发评论（用户授权 + PR `MERGED` 即记录）；self-review 在 agent 内部完成，有发现才写 PR 评论。
 - 流程：
   1. 开始：讨论方案；说“保存为 plan” → `node scripts/workitem.mjs plan save`（建分支/worktree、写 `_dev/plan.md`、空提交 + push、开 draft PR）。开工前先 `git fetch origin` 确认本地 `main` 与 `origin/main` 同步；落后就先处理，不要从陈旧 `main` 建分支。
-  2. 实现：同分支提交；每次 push 跑 `node scripts/check.mjs`（门槛 1）。缺陷同分支修复，重跑门槛 1，重新验收；新需求开新工作项。
+  2. 实现：同分支提交。UAT 通过后、合并前，在最终树上跑一次 `node scripts/check.mjs`（门槛 1）；UAT 后若还有提交，重跑一次。缺陷同分支修复，重跑门槛 1，行为有变时重新验收；新需求开新工作项。
   3. UAT（门槛 2）：建链接后真实使用；每轮结束运行 `node scripts/workitem.mjs uat save`（`_dev/test-log.md` + PR 评论），每轮最多一条评论；`--final` 不再是必需产物。
-  4. 合并：用户说「可以合并」后，agent 更新 CHANGELOG、确认 PR CI 绿、直接跑 `close --yes`，然后报告结果。merge 后不再触发 `main` 的 push CI；`main` 由每天的 nightly schedule 审计一次，不等待，不交命令清单。
+  4. 合并：用户说「可以合并」后，agent 更新 CHANGELOG、在最终树上跑门槛 1、直接跑 `close --yes`，然后报告结果。GitHub 不为 push 或 PR 触发 CI；`main` 由每天的 nightly schedule 审计一次，不等待，不交命令清单。
 - 同一 skill 同时只开一条分支；不同 skill 可并行。
-- 门槛 1（CI）：结构/打包、frontmatter、相对链接、脚本语法、夹具回归、仓库不变式；不调用 LLM。PR 上由 `pull_request` 触发；`main` 每天由 `schedule` 审计一次，merge 本身不触发 run。
+- 门槛 1（本地检查）：结构/打包、frontmatter、相对链接、脚本语法、夹具回归、仓库不变式；不调用 LLM。合并前在最终树上跑一次 `node scripts/check.mjs`；GitHub 不为 push/PR 触发 run，`main` 每天由 `schedule` 审计一次。
 - 门槛 2（UAT）：声明的 UAT 场地真实使用 + 输出检查 + 用户认可/豁免。
 - 链接命令：worktree 自链 `node scripts/link-skill.mjs <skill> <worktree> --link-dir <worktree>/.claude/skills`；
   sandbox 用同一命令改 `--link-dir <sandbox>/.claude/skills`；合入后
@@ -77,7 +77,7 @@ draft 开发阶段**不套用**下面的 GitHub Flow：`drafts/` 的 `_dev/`、`
 
 ### 关闭与清理顺序（不可换）
 
-1. 门槛 2 通过、`node scripts/workitem.mjs status` 显示 `pending: 0`、CI 绿、用户认可。
+1. 门槛 2 通过、`node scripts/workitem.mjs status` 显示 `pending: 0`、本地门槛 1 在最终树上通过、用户认可。
 2. `gh pr ready <n>`（draft PR 不能直接 merge）。
 3. `gh pr merge <n> --rebase`；worktree 还在时不要加 `--delete-branch`。
 4. `git fetch origin`。
@@ -124,7 +124,7 @@ push**。最终仍由 GitHub 的 rebase merge 保持 `main` 线性。只有用�
 - 用户说“保存为 plan/更新 plan/记录方案”时运行 `plan save`；本地优先，gh 失败留 pending。
 - 面向用户的触发词与最短用法见 `README.md`。agent 必须把「开始 `<skill>` 的 `<topic>`」「UAT 通过/有问题」「可以合并」映射到对应动作；「收尾」「同步 main」不再是用户触发词，由 agent 内部处理。用户说「可以合并」后自行执行「关闭与清理顺序」，不再要求用户复制命令或确认 dry-run。
 - sandbox 场地执行 `uat save` 时用 `--repo <worktree>` 指向工作项 worktree。
-- `workitem` 只服务 `<skill>/<topic>` 工作项；`repo/<topic>` 这类仓库级变更保持手动，按同一套门槛（plan/CI/UAT/self-review）由 agent 静默执行、不交命令清单，不扩 `workitem`。
+- `workitem` 只服务 `<skill>/<topic>` 工作项；`repo/<topic>` 这类仓库级变更保持手动，按同一套门槛（plan/本地门槛 1/UAT/self-review）由 agent 静默执行、不交命令清单，不扩 `workitem`。
 - 权限只放行 `node scripts/{workitem,check,link-skill}.mjs`；不要直接允许 `gh`。
 
 ## 分支与提交

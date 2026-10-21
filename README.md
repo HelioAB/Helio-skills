@@ -14,20 +14,20 @@ The skills I personally use in real projects. One skill per directory under `ski
 |---|---|
 | 「开始 `<skill>` 的 `<topic>`：`<方案>`」 | 从最新 `main` 建 worktree 和分支，写 plan，开 draft PR |
 | 「UAT 通过」/「UAT 有问题：…」 | 把本轮结果写进 `_dev/test-log.md`，并评论到 PR。也可以说「UAT 通过，可以合并」，一次完成验收和授权 |
-| 「可以合并」 | agent 更新 CHANGELOG、确认 PR CI 绿、直接跑 `close --yes`：ready → rebase merge → `pull --ff-only` → 清理链接/worktree/分支 → 验证 |
+| 「可以合并」 | agent 更新 CHANGELOG、在最终树上跑门槛 1、直接跑 `close --yes`：ready → rebase merge → `pull --ff-only` → 清理链接/worktree/分支 → 验证 |
 
 「可以合并」是唯一的合并授权；在你明确说这句话之前，agent 只准备，不 merge。授权后 agent 直接执行，不再先给你看 dry-run，也不交命令清单。
 
-「收尾」「同步 main」不再需要你说：CHANGELOG、pending、CI 检查和 self-review 由 agent 在合并时一并处理；`main` 前进时由 agent 在 UAT 或合并前自行同步。
+「收尾」「同步 main」不再需要你说：CHANGELOG、pending、门槛 1 和 self-review 由 agent 在合并时一并处理；`main` 前进时由 agent 在 UAT 或合并前自行同步。
 
 ## 两个门槛
 
-- **门槛 1（CI）**：`node scripts/check.mjs`，也就是 PR 上的 `check`。结构、链接、脚本语法、夹具回归。
+- **门槛 1（本地检查）**：`node scripts/check.mjs`，合并前在最终树上跑一次。结构、链接、脚本语法、夹具回归。
 - **门槛 2（UAT）**：在声明的场地真实使用，检查输出，由你认可或豁免。
 
 两者都过即进入合并；`pending: 0` 与 self-review 是 agent 的内部步骤，不需要你检查。
 
-门槛 1 在 PR 上运行；合并后的 `main` 每天由 nightly schedule 审计一次，不需要你等待。
+GitHub 不为 push 或 PR 运行 CI；`main` 每天由 nightly schedule 审计一次，不需要你等待。
 
 ## 场地与记录
 

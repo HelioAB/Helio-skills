@@ -1,8 +1,8 @@
 name: CI
 on:
-  pull_request:
   schedule:
-    # Nightly audit of main (22:17 China time); merges no longer trigger a run.
+    # Nightly audit of main (22:17 China time). Pushes and PR updates do not
+    # trigger a run; gate 1 runs locally on the final tree before merge.
     - cron: '17 14 * * *'
 jobs:
   check:
