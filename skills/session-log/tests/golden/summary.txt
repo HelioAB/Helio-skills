@@ -1,0 +1,11 @@
+file    fixtures/minimal.jsonl (6.0KB, 14 lines)
+session 11111111-1111-4111-8111-111111111111
+version 2.0.0
+branch  main
+title   Fixture parser walkthrough
+cwd     /home/test/project
+time    2026-01-02 03:04:05 → 2026-01-02 03:05:04 (59s)
+entries user 7 · assistant 6 · ai-title 1
+turns   3 user prompts (+2 command/meta) · 5 assistant messages
+tools   2 calls · Read 1 · Bash 1
+tokens  claude-sonnet-5-5: 5 msgs · in 990 · cache-read 9.7k · cache-create 0 · out 170
