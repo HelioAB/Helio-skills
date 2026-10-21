@@ -137,6 +137,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Workflow scope clarified: the GitHub Flow in `README.md`/`AGENTS.md` applies
+  only to graduated skills under `skills/`. Draft-stage work under `drafts/`
+  keeps its independent path — `_dev/` and `_sources/` are tracked, progress
+  is gated by `_dev/test-log.md`, and only the graduation commit and later
+  iterations enter the `<skill>/<topic>` work item + CI/UAT model. The
+  `workitem` commands likewise require `skills/<skill>`.
 - Workflow docs split by audience: `README.md` is now the user-facing manual —
   the five short phrases (start, UAT, sync main, wrap up, merge), the two
   gates, venues/records, and optional manual commands — while `AGENTS.md`

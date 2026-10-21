@@ -50,6 +50,10 @@
 3. 开 draft PR；门槛 1（CI）通过、门槛 2（UAT）认可后 rebase merge 到 `main`；
    merge 后删除分支/worktree。没有 close 提交。
 
+draft 开发阶段**不套用**下面的 GitHub Flow：`drafts/` 的 `_dev/`、`_sources/` 入库，按
+`_dev/test-log.md` 的自定门槛推进；只有升格提交及升格后的迭代进入 `<skill>/<topic>`
+工作项 + CI/UAT。`workitem` 的 `plan save`/`uat save`/`close` 只接受 `skills/<skill>`。
+
 ## 已升格 skill 的迭代（GitHub Flow）
 
 - 一个工作项 = 一条分支 = 一个 PR = 一次行为变更。

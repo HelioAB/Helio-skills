@@ -37,13 +37,14 @@ node scripts/workitem.mjs close [--repo <worktree>] [--sandbox <dir>] [--dry-run
 - 默认 `--dry-run`：做预检并打印将执行的步骤，不改任何状态。
 - `--yes`：执行 ready → rebase merge → 链接恢复/移除 → worktree 移除 → pull → 删本地/远端分支 → 验证。
 - `gh` 仍只在脚本内调用，不新增 `Bash(gh *)` 权限。
-- 只服务 `<skill>/<topic>`；`repo/<topic>` 仍保持手动（D2）。
+- 只服务已升格 skill 的 `<skill>/<topic>`；`repo/<topic>` 与 `drafts/` 阶段的 skill 均保持独立（D2、D8）。
 
 ### 0.3 不要重复做的事
 
 - 不要重做 GitHub Flow 加固（AGENTS 11 步、CI `fetch-depth: 0`、fake-gh 的 `pr ready`/`pr merge`、flow A/B 测试）。
 - 不要修改 `skills/session-log/scripts/claude-code.mjs` 或 `export.mjs`；`--json` 不一致是独立缺陷。
 - 不要扩 `workitem` 去支持 `repo/<topic>`。
+- 不要把 `close` 扩到 `drafts/`；draft 阶段仍按 AGENTS 的升格流程（`_dev/test-log.md` 门槛 + 升格提交）。
 - 不要新增 `Bash(gh *)` 允许规则；gh 调用留在脚本里。
 - 不要在 worktree 还在时使用 `gh pr merge --delete-branch`。
 - 不要用 `git worktree remove --force`，也不要跳过 worktree 内链接的移除（Windows junction 会删到主检出）。
@@ -297,6 +298,7 @@ gh run list --branch main --limit 3
 | D5 | worktree 有未提交改动 | 拒绝执行，提示先提交/清理。 |
 | D6 | PR 已 MERGED | 跳过 ready/merge，继续清理（幂等续跑）。 |
 | D7 | 分支删除 | 脚本删除本地与远端分支；merge 时不加 `--delete-branch`。 |
+| D8 | draft 阶段是否纳入 `close`/GitHub Flow | **不纳入**；保持独立，`close` 只接受 `skills/<skill>`；draft 按 `_dev/test-log.md` 门槛 + 升格提交。 |
 
 若新 session 没收到选择，按推荐默认执行，并在报告里注明。
 

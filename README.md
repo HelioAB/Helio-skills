@@ -2,9 +2,11 @@
 
 The skills I personally use in real projects. One skill per directory under `skills/`.
 
-## 日常开发流程
+## 日常开发流程（已升格 skill）
 
-每个工作项 = 一条分支 = 一个 PR。完整规则见 [AGENTS.md](AGENTS.md)；这里只写用户侧的最短用法。
+每个**已升格 skill**（`skills/<name>`）的迭代 = 一条分支 = 一个 PR。完整规则见 [AGENTS.md](AGENTS.md)；这里只写用户侧的最短用法。
+
+> `drafts/<name>` 阶段不适用本节：draft 的 `_dev/`、`_sources/` 入库，按 `_dev/test-log.md` 里的自定门槛推进；达到门槛后按 AGENTS.md 的「升格流程」一次性升格。`workitem` 的 `plan`/`uat`/`close` 也只服务 `skills/` 下的工作项。
 
 你不需要记命令，对 agent 说这几句就够了：
 
