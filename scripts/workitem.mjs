@@ -37,12 +37,14 @@ uat save:
   On gh failure the local file is still written and a pending entry is saved.
 
 close:
-  Preflights pending: 0, a clean worktree, and a clean main checkout on main,
-  then readies the draft PR, rebase-merges it, points <sandbox>/.claude/skills
-  back at main (when --sandbox is given), removes the worktree's own skill
-  link, removes the worktree, fast-forwards main, deletes the local and remote
-  branch, and verifies the result. Dry-run by default; --yes executes. A PR
-  that is already MERGED skips ready/merge, so an interrupted close can resume.
+  Preflights pending: 0, a clean worktree, and a main checkout on main, then
+  readies the draft PR, rebase-merges it, fetches and fast-forwards main,
+  points <sandbox>/.claude/skills back at main (when --sandbox is given),
+  removes the worktree's own skill link, removes the worktree, deletes the
+  local and remote branch, and verifies the result. The pull runs before
+  cleanup, so a failed pull leaves the worktree in place and close can rerun.
+  Dry-run by default; --yes executes. A PR that is already MERGED skips
+  ready/merge, so an interrupted close can resume.
 
 sync / status:
   Retry pending remote writes / show branch, worktree, PR, and pending state.
@@ -690,12 +692,8 @@ function cmdClose(flags) {
   const mainBranch = branchOf(main);
   if (mainBranch !== 'main')
     die(`main checkout (${main}) is on "${mainBranch}", expected "main"`);
-  const mainStatus = git(['status', '--porcelain'], main);
-  if (mainStatus.stdout.trim())
-    die(
-      `main checkout has uncommitted changes; commit or discard them first:\n` +
-        mainStatus.stdout.trim()
-    );
+  // Unrelated changes in the main checkout are fine: pull --ff-only leaves
+  // them alone, and if it cannot, it fails before any cleanup.
 
   const list = listPrs(branch, worktree, flags);
   if (!list.ok) die(`gh pr list failed: ${list.error}`);
@@ -760,6 +758,10 @@ function cmdClose(flags) {
 
   step(`git -C ${main} fetch origin`, null, () => git(['fetch', 'origin'], main));
 
+  step('git pull --ff-only origin main', null, () =>
+    git(['pull', '--ff-only', 'origin', 'main'], main)
+  );
+
   if (sandbox)
     step(`link-skill ${skill} main --link-dir ${sandboxLinkDir}`, null, () =>
       linkScriptRun(main, [skill, 'main', '--link-dir', sandboxLinkDir])
@@ -775,10 +777,6 @@ function cmdClose(flags) {
     process.chdir(main);
     git(['worktree', 'remove', worktree], main);
   });
-
-  step('git pull --ff-only origin main', null, () =>
-    git(['pull', '--ff-only', 'origin', 'main'], main)
-  );
 
   step(
     `git branch -D ${branch}`,
