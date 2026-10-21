@@ -213,6 +213,27 @@ test('repeating an identical uat section does not duplicate the log or comment',
     assert.equal(readGh(ghState).prs[0].comments.length, 1);
   }));
 
+test('uat save --final appends the approval section and posts it', () =>
+  withRepo(({ repo, ghState, env }) => {
+    planSave(repo, env, '# Plan: first\n');
+    const worktree = path.join(repo, '.worktree', 'demo', 'first');
+    const r = ok(
+      [WORKITEM, 'uat', 'save', '--final', '--approval', 'yes', '--note', 'looks good', '--gh', FAKE_GH],
+      { cwd: worktree, env }
+    );
+
+    assert.match(r.stdout, /PR comment: posted/);
+    const log = fs.readFileSync(
+      path.join(worktree, 'skills', 'demo', '_dev', 'test-log.md'),
+      'utf8'
+    );
+    assert.match(log, /## UAT close — yes/);
+    assert.match(log, /- approval: yes/);
+    assert.match(log, /- note: looks good/);
+    assert.equal(readGh(ghState).prs[0].comments.length, 1);
+    assert.match(readGh(ghState).prs[0].comments[0].body, /- approval: yes/);
+  }));
+
 test('a failed comment is written locally, left pending, then sync retries', () =>
   withRepo(({ repo, ghState, env }) => {
     planSave(repo, env, '# Plan: first\n');

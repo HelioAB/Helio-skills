@@ -36,7 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deletes only the link and is idempotent — run it before `git worktree remove`,
   because recursive deletion can follow a junction into the main checkout.
   `--link-dir` targets a worktree or sandbox, so the main checkout's links stay
-  on `main`.
+  on `main`. The repo is resolved from the script's own checkout, so the
+  command also works from a sandbox cwd that is not a git repository.
 - Deterministic gate 1 (`scripts/check.mjs` + `.github/workflows/ci.yml`):
   one zero-dependency command checks repo invariants (CLAUDE.md pointer, no
   tracked `skills/**/_dev` or `_sources`, kebab-case skill dirs), skill

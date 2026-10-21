@@ -6,6 +6,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 const USAGE = `link-skill — switch a skill link safely
 
@@ -55,7 +58,11 @@ function parseArgs(argv) {
 }
 
 function mainWorktree() {
-  const r = spawnSync('git', ['worktree', 'list', '--porcelain'], { encoding: 'utf8' });
+  // Resolve from this script's checkout, not the caller's cwd: sandbox
+  // sessions are not git checkouts but still need main/worktree links.
+  const r = spawnSync('git', ['-C', HERE, 'worktree', 'list', '--porcelain'], {
+    encoding: 'utf8',
+  });
   if (r.error || r.status !== 0)
     die(`git worktree list failed: ${r.error?.message || r.stderr || `exit ${r.status}`}`);
   for (const line of r.stdout.split(/\r?\n/)) {
