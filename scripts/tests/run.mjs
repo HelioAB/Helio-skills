@@ -338,6 +338,13 @@ test('error paths return nonzero', () =>
     });
     assert.notEqual(r.status, 0);
     assert.match(r.stderr, /--approval/);
+
+    r = run([WORKITEM, 'close', '--yes', '--dry-run', '--gh', FAKE_GH], {
+      cwd: worktree,
+      env,
+    });
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /either --yes or --dry-run/);
   }));
 
 test('_dev never appears in git status or the tracked file list', () =>
@@ -358,6 +365,11 @@ function linkScriptInRepo(repo) {
   fs.mkdirSync(dir, { recursive: true });
   const target = path.join(dir, 'link-skill.mjs');
   fs.copyFileSync(path.join(ROOT, 'scripts', 'link-skill.mjs'), target);
+  // The work item close preflight requires a clean main checkout, so the
+  // fixture must be tracked instead of sitting there untracked.
+  git(repo, ['add', 'scripts/link-skill.mjs']);
+  git(repo, ['commit', '-m', 'chore: add link-skill fixture']);
+  git(repo, ['push', 'origin', 'main']);
   return target;
 }
 
@@ -536,6 +548,154 @@ test('flow B: main advances while the work item is open', () =>
       git(repo, ['show', 'main:skills/demo/check.mjs']).stdout,
       'export const ok = true;'
     );
+  }));
+
+// ---------- close ----------
+
+function addContentCommit(worktree, branch = 'demo/first') {
+  fs.writeFileSync(
+    path.join(worktree, 'skills', 'demo', 'check.mjs'),
+    'export const ok = true;\n'
+  );
+  git(worktree, ['add', 'skills/demo/check.mjs']);
+  git(worktree, ['commit', '-m', 'feat(demo): add check']);
+  git(worktree, ['push', 'origin', branch]);
+}
+
+function closeWorkItem({ repo, worktree, env, sandboxDir, args = [] }) {
+  return ok(
+    [
+      WORKITEM, 'close', '--yes',
+      ...(sandboxDir ? ['--sandbox', sandboxDir] : []),
+      ...args,
+      '--gh', FAKE_GH,
+    ],
+    {
+      cwd: worktree,
+      env: { ...env, FAKE_GH_REPO: repo, FAKE_GH_WORKTREE: worktree },
+    }
+  );
+}
+
+test('close defaults to dry-run and changes nothing', () =>
+  withRepo(({ repo, ghState, env }) => {
+    planSave(repo, env, '# Plan: first\n');
+    const worktree = path.join(repo, '.worktree', 'demo', 'first');
+    addContentCommit(worktree);
+
+    const r = ok([WORKITEM, 'close', '--gh', FAKE_GH], { cwd: worktree, env });
+
+    assert.match(r.stdout, /would run: gh pr merge 1 --rebase/);
+    assert.match(r.stdout, /would run: git -C .* worktree remove /);
+    assert.match(r.stdout, /dry run: no changes made/);
+    assert.ok(!/close complete/.test(r.stdout));
+
+    const gh = readGh(ghState);
+    assert.equal(gh.prs[0].state, 'OPEN');
+    assert.equal(gh.prs[0].draft, true);
+    assert.ok(
+      !gh.calls.some((c) => c.args[0] === 'pr' && ['ready', 'merge'].includes(c.args[1])),
+      'dry-run must not call pr ready or pr merge'
+    );
+    assert.ok(fs.existsSync(worktree));
+    assert.notEqual(git(repo, ['branch', '-r', '--list', 'origin/demo/first']).stdout, '');
+  }));
+
+test('close refuses pending writes until sync', () =>
+  withRepo(({ repo, env }) => {
+    planSave(repo, env, '# Plan: first\n');
+    const worktree = path.join(repo, '.worktree', 'demo', 'first');
+    uatSave(worktree, { ...env, FAKE_GH_FAIL: 'comment' }, [
+      '--result', 'findings', '--findings', 'broken layout',
+    ]);
+    assert.equal(readSync(worktree).pending.length, 1);
+
+    let r = run([WORKITEM, 'close', '--dry-run', '--gh', FAKE_GH], { cwd: worktree, env });
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /pending: 1/);
+    assert.match(r.stderr, /workitem\.mjs sync/);
+
+    ok([WORKITEM, 'sync', '--gh', FAKE_GH], { cwd: worktree, env });
+    r = ok([WORKITEM, 'close', '--dry-run', '--gh', FAKE_GH], { cwd: worktree, env });
+    assert.match(r.stdout, /dry run: no changes made/);
+  }));
+
+test('close --yes merges, cleans up, and restores the sandbox link', () =>
+  withRepo(({ tmp, repo, ghState, env }) => {
+    const worktree = path.join(repo, '.worktree', 'demo', 'first');
+    const linkScript = linkScriptInRepo(repo);
+    planSave(repo, env, '# Plan: first\n');
+    addContentCommit(worktree);
+
+    const sandbox = path.join(tmp, 'sandbox');
+    fs.mkdirSync(sandbox);
+    const sandboxDir = path.join(sandbox, '.claude', 'skills');
+    ok([linkScript, 'demo', worktree, '--link-dir', sandboxDir], { cwd: repo });
+    ok(
+      [linkScript, 'demo', worktree, '--link-dir', path.join(worktree, '.claude', 'skills')],
+      { cwd: worktree }
+    );
+
+    const r = closeWorkItem({ repo, worktree, env, sandboxDir: sandbox });
+
+    assert.match(r.stdout, /close complete: https:\/\/example\.test\/pr\/1/);
+    assert.equal(readGh(ghState).prs[0].state, 'MERGED');
+    assert.equal(
+      git(repo, ['show', 'main:skills/demo/check.mjs']).stdout,
+      'export const ok = true;'
+    );
+    assertMergedAndClean({ repo, worktree, branch: 'demo/first', sandboxDir });
+  }));
+
+test('close resumes when the PR is already merged', () =>
+  withRepo(({ repo, ghState, env }) => {
+    const worktree = path.join(repo, '.worktree', 'demo', 'first');
+    linkScriptInRepo(repo);
+    planSave(repo, env, '# Plan: first\n');
+    addContentCommit(worktree);
+
+    const flowEnv = { ...env, FAKE_GH_REPO: repo, FAKE_GH_WORKTREE: worktree };
+    fakeGh(['pr', 'ready', '1'], { cwd: repo, env: flowEnv });
+    fakeGh(['pr', 'merge', '1', '--rebase'], { cwd: repo, env: flowEnv });
+    assert.equal(readGh(ghState).prs[0].state, 'MERGED');
+
+    const r = closeWorkItem({ repo, worktree, env });
+
+    assert.match(r.stdout, /skip: gh pr ready 1 \(PR already merged\)/);
+    assert.match(r.stdout, /skip: gh pr merge 1 --rebase \(PR already merged\)/);
+    assert.match(r.stdout, /close complete/);
+    assert.ok(!fs.existsSync(worktree));
+    assert.equal(git(repo, ['branch', '--list', 'demo/first']).stdout, '');
+    assert.equal(git(repo, ['branch', '-r', '--list', 'origin/demo/first']).stdout, '');
+  }));
+
+test('close refuses a non-work-item branch', () =>
+  withRepo(({ repo, env }) => {
+    let r = run([WORKITEM, 'close', '--gh', FAKE_GH], { cwd: repo, env });
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /<skill>\/<topic>/);
+
+    git(repo, ['switch', '-c', 'repo/thing']);
+    r = run([WORKITEM, 'close', '--gh', FAKE_GH], { cwd: repo, env });
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /repository-level branch/);
+  }));
+
+test('close refuses a dirty worktree', () =>
+  withRepo(({ repo, env }) => {
+    planSave(repo, env, '# Plan: first\n');
+    const worktree = path.join(repo, '.worktree', 'demo', 'first');
+    fs.writeFileSync(path.join(worktree, 'skills', 'demo', 'dirty.txt'), 'x\n');
+
+    const r = run([WORKITEM, 'close', '--yes', '--gh', FAKE_GH], {
+      cwd: worktree,
+      env: { ...env, FAKE_GH_REPO: repo, FAKE_GH_WORKTREE: worktree },
+    });
+
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /uncommitted changes/);
+    assert.equal(readGh(env.FAKE_GH_STATE).prs[0].state, 'OPEN');
+    assert.ok(fs.existsSync(worktree));
   }));
 
 console.log(`\n${passed} passed, ${failed} failed`);
