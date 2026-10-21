@@ -37,12 +37,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   labeled as heuristic — a possible mtime threshold or confirmation step), and
   the failure candidate table can put unrelated concurrent sessions first, so
   consumers should confirm with the user rather than take the top hit.
-- Graduated-skill iteration procedure (in `AGENTS.md`): iterating inside
-  `skills/<name>/` may recreate `_`-prefixed dev dirs (`_dev/`, `_sources/`) in
-  place; behavior changes need a `_dev/test-log.md` entry before they commit,
-  doc-only changes commit directly, and iteration close distills conclusions
-  into CHANGELOG (including "Parked, not applied" findings) then drops `_dev/`
-  wholesale.
+- Graduated-skill iteration procedure (in `AGENTS.md`): iterate in place inside
+  `skills/<name>/`; `_dev/` (and `_sources/`) there are gitignored, permanent
+  local working dirs — never committed, never deleted. Two-stage gate for
+  behavior changes (doc-only fixes commit directly): scripted verification
+  recorded in `_dev/test-log.md` gates the content commit; closing an iteration
+  needs at least one real-project use recorded there plus user approval
+  (explicit waiver when none is forthcoming). With `_dev/` out of version
+  control, CHANGELOG is the only durable record — entries must absorb every
+  conclusion and "Parked, not applied" finding. Close is a test-log closing
+  entry (plan marked superseded), not a commit; iteration branches decouple
+  from `_dev/` (one iteration may span several), and same-skill iterations run
+  serially, with validation-window fixes landing as further content commits in
+  the same iteration.
 - Graduation procedure (in `AGENTS.md`): codified from the grill-x and session-log
   graduations — commit pending test-log changes first; one graduation commit moves
   runtime files verbatim (100% rename), drops `_`-prefixed dirs wholesale, and records
