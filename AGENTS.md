@@ -59,15 +59,12 @@ draft 开发阶段**不套用**下面的 GitHub Flow：`drafts/` 的 `_dev/`、`
 - 一个工作项 = 一条分支 = 一个 PR = 一次行为变更。
 - 从最新 `main` 建 `<skill>/<topic>` 分支和 `.worktree/<skill>/<topic>` worktree；draft PR 正文 = plan。
 - `skills/<skill>/_dev/` 是当前 worktree 内的 per-branch 工作副本（gitignored，随 worktree 删除），不是记录。
-- 持久记录：PR 正文（plan）、PR 评论（UAT）、`CHANGELOG.md`（仓库内唯一持久摘要）。
+- 持久记录：PR 正文（plan）、PR 评论（UAT）、`CHANGELOG.md`（仓库内唯一持久摘要）。最终认可不另发评论（用户授权 + PR `MERGED` 即记录）；self-review 在 agent 内部完成，有发现才写 PR 评论。
 - 流程：
-  1. 讨论方案；说“保存为 plan” → `node scripts/workitem.mjs plan save`（建分支/worktree、写 `_dev/plan.md`、空提交 + push、开 draft PR）。开工前先 `git fetch origin` 确认本地 `main` 与 `origin/main` 同步；落后就先处理，不要从陈旧 `main` 建分支。
-  2. 实现；每次 push 跑 `node scripts/check.mjs`（门槛 1）。
-  3. 建 UAT 链接：worktree 自链，或 sandbox 的 `.claude/skills/<skill>` 指向 worktree skill。
-  4. UAT（门槛 2）：真实使用；每轮结束运行 `node scripts/workitem.mjs uat save`（`_dev/test-log.md` + PR 评论）。
-  5. 缺陷：同分支提交，重跑门槛 1，重新验收。新需求：新工作项。
-  6. 关闭前：CHANGELOG 吸入结论；`node scripts/workitem.mjs uat save --final`；`node scripts/workitem.mjs status` 必须显示 `pending: 0`（否则先 `sync`）；CI 绿；self-review。
-  7. `gh pr ready <n>` 把 draft 转 ready，再按下面的「关闭与清理顺序」合并、清理。没有 close 提交。
+  1. 开始：讨论方案；说“保存为 plan” → `node scripts/workitem.mjs plan save`（建分支/worktree、写 `_dev/plan.md`、空提交 + push、开 draft PR）。开工前先 `git fetch origin` 确认本地 `main` 与 `origin/main` 同步；落后就先处理，不要从陈旧 `main` 建分支。
+  2. 实现：同分支提交；每次 push 跑 `node scripts/check.mjs`（门槛 1）。缺陷同分支修复，重跑门槛 1，重新验收；新需求开新工作项。
+  3. UAT（门槛 2）：建链接后真实使用；每轮结束运行 `node scripts/workitem.mjs uat save`（`_dev/test-log.md` + PR 评论），每轮最多一条评论；`--final` 不再是必需产物。
+  4. 合并：用户说「可以合并」后，agent 更新 CHANGELOG、确认 PR CI 绿、直接跑 `close --yes`，然后报告结果。不等待 merge 后的 `main` push CI，不交命令清单。
 - 同一 skill 同时只开一条分支；不同 skill 可并行。
 - 门槛 1（CI）：结构/打包、frontmatter、相对链接、脚本语法、夹具回归、仓库不变式；不调用 LLM。
 - 门槛 2（UAT）：声明的 UAT 场地真实使用 + 输出检查 + 用户认可/豁免。
@@ -80,45 +77,54 @@ draft 开发阶段**不套用**下面的 GitHub Flow：`drafts/` 的 `_dev/`、`
 
 ### 关闭与清理顺序（不可换）
 
-1. 门槛 2 通过、`node scripts/workitem.mjs status` 显示 `pending: 0`、CI 绿、self-review 完成、用户认可。
+1. 门槛 2 通过、`node scripts/workitem.mjs status` 显示 `pending: 0`、CI 绿、用户认可。
 2. `gh pr ready <n>`（draft PR 不能直接 merge）。
 3. `gh pr merge <n> --rebase`；worktree 还在时不要加 `--delete-branch`。
 4. `git fetch origin`。
-5. 用 sandbox 时：`node scripts/link-skill.mjs <skill> main --link-dir <sandbox>/.claude/skills`。
-6. `node scripts/link-skill.mjs remove <skill> --link-dir <worktree>/.claude/skills`。
-7. `git worktree remove <worktree>`。
-8. 在主检出：`git pull --ff-only origin main`。
+5. 在主检出：`git pull --ff-only origin main`。
+6. 用 sandbox 时：`node scripts/link-skill.mjs <skill> main --link-dir <sandbox>/.claude/skills`。
+7. `node scripts/link-skill.mjs remove <skill> --link-dir <worktree>/.claude/skills`。
+8. `git worktree remove <worktree>`。
 9. `git branch -D <skill>/<topic>`（rebase merge 后 SHA 已变，`-d` 会拒绝）。
 10. `git push origin --delete <skill>/<topic>`（若远端未自动删除）。
 11. 验证：`git worktree list` 无残留、`git branch -a` 无该分支、`link-skill status` 目标正确。
 
-第 6 步不能省：Windows 上 `git worktree remove` 会沿 junction 删除主检出的 skill（本项目已实际发生过一次）。
+第 7 步不能省：Windows 上 `git worktree remove` 会沿 junction 删除主检出的 skill（本项目已实际发生过一次）。
 
-自动化路径：用户说「可以合并」后运行
-`node scripts/workitem.mjs close [--sandbox <dir>]` —— 默认 dry-run，先把步骤给用户看；
-`--yes` 才执行。上面 11 步仍是规范顺序，也是脚本失败时的兜底。`repo/<topic>` 不走
-`close`。
+`pull --ff-only` 放在 worktree 移除之前（第 5 步）：pull 失败时 worktree 仍在，`close`
+可以重跑，不会卡在“PR 已 merge、worktree 已删、分支还在”的半完成状态。
+
+自动化路径：用户说「可以合并」后直接运行
+`node scripts/workitem.mjs close [--sandbox <dir>] --yes` —— 预检失败会先停，不会留下
+半完成状态；`--dry-run` 只在用户要求预览或排查时使用。上面 11 步仍是规范顺序，也是
+脚本失败时的兜底。`repo/<topic>` 不走 `close`，agent 按同一顺序静默执行并验证，不交
+命令清单。
 
 ### main 前进时的同步
 
-工作项活到 UAT 结束期间 `main` 可能前进。需要同步时在 worktree 内 `git fetch origin` + `git merge origin/main`，再 push；**不 rebase、不 force push**。最终仍由 GitHub 的 rebase merge 保持 `main` 线性。只有用户明确允许时才用 `git rebase origin/main` + `git push --force-with-lease`。
+工作项活到 UAT 结束期间 `main` 可能前进。agent 在 UAT 前或合并前自动检查，并在
+worktree 内 `git fetch origin` + `git merge origin/main`，再 push；**不 rebase、不 force
+push**。最终仍由 GitHub 的 rebase merge 保持 `main` 线性。只有用户明确允许时才用
+`git rebase origin/main` + `git push --force-with-lease`。同步由 agent 处理，不是用户
+触发词。
 
 ## 工作项自动化
 
 - `node scripts/workitem.mjs plan save`：写 `_dev/plan.md`，建/更新 draft PR 正文；工作项不存在时自动创建分支/worktree。plan 正文从 stdin（推荐 heredoc）读取；为空时沿用已有的 `_dev/plan.md`。
 - `node scripts/workitem.mjs uat save ...`：追加 `_dev/test-log.md`，发 PR 评论；每轮 UAT 后自动运行。
-- `node scripts/workitem.mjs uat save --final ...`：关闭前的最终认可/豁免评论。
+- `node scripts/workitem.mjs uat save --final ...`：可选的最终认可/豁免记录；不再是关闭前的必需产物。
 - `node scripts/workitem.mjs close [--sandbox <dir>] [--dry-run | --yes]`：预检
-  `pending: 0`、worktree 与主检出干净、PR `OPEN`/`MERGED`，然后 `--yes` 执行
-  ready → rebase merge → sandbox 链接恢复 → worktree 内链接移除 → worktree 移除 →
-  `pull --ff-only` → 本地/远端分支删除 → 验证。默认 dry-run；已 `MERGED` 的 PR
-  跳过 ready/merge，可续跑。
+  `pending: 0`、worktree 干净、主检出在 `main`、PR `OPEN`/`MERGED`；授权后直接
+  `--yes`，预检失败会先停。执行 ready → rebase merge → `fetch` + `pull --ff-only` →
+  sandbox 链接恢复 → worktree 内链接移除 → worktree 移除 → 本地/远端分支删除 →
+  验证。主检出的无关改动不阻塞 close；`pull` 在清理前执行，失败时 worktree 仍在，
+  可重跑。默认 dry-run；已 `MERGED` 的 PR 跳过 ready/merge，可续跑。
 - `node scripts/workitem.mjs sync`：重试失败的远端同步。
 - `node scripts/workitem.mjs status`：分支/worktree/PR/pending 状态。
 - 用户说“保存为 plan/更新 plan/记录方案”时运行 `plan save`；本地优先，gh 失败留 pending。
-- 面向用户的触发词与最短用法见 `README.md`。agent 必须把「开始 `<skill>` 的 `<topic>`」「UAT 通过/有问题」「同步 main」「收尾」「可以合并」映射到对应动作；用户说「可以合并」后自行执行「关闭与清理顺序」，不再要求用户复制命令。
+- 面向用户的触发词与最短用法见 `README.md`。agent 必须把「开始 `<skill>` 的 `<topic>`」「UAT 通过/有问题」「可以合并」映射到对应动作；「收尾」「同步 main」不再是用户触发词，由 agent 内部处理。用户说「可以合并」后自行执行「关闭与清理顺序」，不再要求用户复制命令或确认 dry-run。
 - sandbox 场地执行 `uat save` 时用 `--repo <worktree>` 指向工作项 worktree。
-- `workitem` 只服务 `<skill>/<topic>` 工作项；`repo/<topic>` 这类仓库级变更保持手动，按同一套门槛（plan/CI/UAT/self-review）执行，不扩 `workitem`。
+- `workitem` 只服务 `<skill>/<topic>` 工作项；`repo/<topic>` 这类仓库级变更保持手动，按同一套门槛（plan/CI/UAT/self-review）由 agent 静默执行、不交命令清单，不扩 `workitem`。
 - 权限只放行 `node scripts/{workitem,check,link-skill}.mjs`；不要直接允许 `gh`。
 
 ## 分支与提交
