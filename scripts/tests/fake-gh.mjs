@@ -6,10 +6,18 @@
 //   gh pr edit <n> --body-file <f>
 //   gh pr comment <n> --body-file <f>
 //   gh pr view <n> --json number,url,state
+//   gh pr ready <n>
+//   gh pr merge <n> --rebase [--delete-branch]
 // $FAKE_GH_FAIL is a comma-separated list of command substrings that must fail,
 // e.g. "create,comment".
+//
+// When FAKE_GH_REPO and FAKE_GH_WORKTREE are set, "pr merge --rebase" also
+// simulates the git side: rebase the worktree branch onto main, fast-forward
+// main in the repo, push, and optionally delete the remote branch. This is a
+// flow simulation, not a reproduction of GitHub's rebase merge.
 
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 
 const statePath = process.env.FAKE_GH_STATE;
 if (!statePath) {
@@ -29,6 +37,7 @@ const state = load();
 state.prs ??= [];
 state.calls ??= [];
 state.nextNumber ??= 1;
+state.deletedBranches ??= [];
 
 const args = process.argv.slice(2);
 const sub = args.slice(0, 2).join(' ');
@@ -65,6 +74,16 @@ function findPr(number) {
 }
 
 const urlFor = (n) => `https://example.test/pr/${n}`;
+
+function git(cwd, gitArgs) {
+  const r = spawnSync('git', ['-C', cwd, ...gitArgs], { encoding: 'utf8' });
+  if (r.error || r.status !== 0) {
+    const detail = (r.error?.message || r.stderr || `exit ${r.status}`).trim();
+    console.error(`fake gh: git ${gitArgs.join(' ')} failed: ${detail}`);
+    process.exit(1);
+  }
+  return r.stdout || '';
+}
 
 if (args[0] === 'pr' && args[1] === 'list') {
   const head = flag('--head');
@@ -115,6 +134,39 @@ if (args[0] === 'pr' && args[1] === 'list') {
     process.exit(1);
   }
   console.log(JSON.stringify({ number: pr.number, url: pr.url, state: pr.state }));
+} else if (args[0] === 'pr' && args[1] === 'ready') {
+  const pr = findPr(args[2]);
+  if (!pr) {
+    console.error(`fake gh: no pull request #${args[2]}`);
+    process.exit(1);
+  }
+  pr.draft = false;
+  save();
+  console.log(pr.url);
+} else if (args[0] === 'pr' && args[1] === 'merge') {
+  const pr = findPr(args[2]);
+  if (!pr) {
+    console.error(`fake gh: no pull request #${args[2]}`);
+    process.exit(1);
+  }
+  if (pr.draft) {
+    console.error('fake gh: Pull request is still a draft');
+    process.exit(1);
+  }
+  const repo = process.env.FAKE_GH_REPO;
+  const worktree = process.env.FAKE_GH_WORKTREE;
+  if (repo && worktree) {
+    git(worktree, ['rebase', 'main']);
+    git(repo, ['merge', '--ff-only', pr.branch]);
+    git(repo, ['push', 'origin', 'main']);
+    if (args.includes('--delete-branch')) {
+      git(repo, ['push', 'origin', '--delete', pr.branch]);
+      state.deletedBranches.push(pr.branch);
+    }
+  }
+  pr.state = 'MERGED';
+  save();
+  console.log(`Merged pull request #${pr.number}`);
 } else {
   console.error(`fake gh: unsupported command "${sub}"`);
   process.exit(2);
