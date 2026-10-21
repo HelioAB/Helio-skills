@@ -1,0 +1,38 @@
+── #0 user · 03:04:05 ──────────────────────────────────────────────────
+Show me how the fixture parser handles tool calls.
+
+── #1 assistant claude-sonnet-5-5 · 03:04:06 · L2-3 ────────────────────
+I'll inspect the README first.
+  → Read  /home/test/project/README.md
+  ← 33B
+
+── #3 assistant claude-sonnet-5-5 · 03:04:09 · L5-5 ────────────────────
+The README is minimal.
+
+── #4 user [cmd] · 03:04:10 ────────────────────────────────────────────
+<command-name>/session-log</command-name>
+<command-args>summary fixtures/minimal.jsonl</command-args>
+
+── #5 user [meta] · 03:04:11 ───────────────────────────────────────────
+Base directory for this skill: /home/test/project/.claude/skills/session-log
+
+# session-log
+
+Fixture skill body.
+
+── #6 user · 03:04:12 ──────────────────────────────────────────────────
+What does the tools command report?
+
+── #7 assistant claude-sonnet-5-5 · 03:04:13 · L9-9 ────────────────────
+It reports every tool call with its input and result size.
+
+── #8 user · 03:05:00 ──────────────────────────────────────────────────
+Now run the transcript parser.
+
+── #9 assistant claude-sonnet-5-5 · 03:05:01 · L11-11 ──────────────────
+  → Bash  node skills/session-log/scripts/claude-code.mjs transcript fixtures/minimal.jsonl
+  ← 27B
+
+── #11 assistant claude-sonnet-5-5 · 03:05:03 · L13-13 ─────────────────
+Done.
+

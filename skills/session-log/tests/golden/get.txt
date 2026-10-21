@@ -1,0 +1,31 @@
+{
+  "idx": 1,
+  "kind": "assistant",
+  "model": "claude-sonnet-5-5",
+  "messageId": "msg_001",
+  "blocks": [
+    {
+      "type": "text",
+      "text": "I'll inspect the README first."
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01",
+      "name": "Read",
+      "input": {
+        "file_path": "/home/test/project/README.md"
+      }
+    }
+  ],
+  "usage": {
+    "input_tokens": 130,
+    "cache_read_input_tokens": 1100,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 60
+  },
+  "lineLast": 3,
+  "line": 2,
+  "ts": "2026-01-02T03:04:06.000Z",
+  "uuid": "11111111-0002-4000-8000-000000000002",
+  "sidechain": false
+}

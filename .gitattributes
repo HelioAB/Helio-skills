@@ -1,0 +1,4 @@
+# session-log goldens assert byte counts from the fixture; keep them LF on every
+# checkout so Windows' core.autocrlf cannot change the summary output.
+skills/session-log/tests/fixtures/* text eol=lf
+skills/session-log/tests/golden/* text eol=lf

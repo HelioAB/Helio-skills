@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Deterministic gate 1 (`scripts/check.mjs` + `.github/workflows/ci.yml`):
+  one zero-dependency command checks repo invariants (CLAUDE.md pointer, no
+  tracked `skills/**/_dev` or `_sources`, kebab-case skill dirs), skill
+  structure (frontmatter name/description, resolvable relative links,
+  non-empty `references/`), `node --check` for every `.mjs`, and every
+  discovered fixture runner; GitHub Actions runs it on pull requests and
+  pushes to `main`. `--skill <name>` narrows the skill checks. A CHANGELOG
+  soft check only warns in Actions, never fails.
+- `session-log` fixture suite (`skills/session-log/tests/`): synthetic
+  `minimal.jsonl` (multi-turn dialogue, merged assistant blocks, paired
+  tool_use/tool_result, command and meta entries) with hand-inspected goldens
+  for summary/transcript/user/tools/usage/get, plus flag, JSON, current-turn
+  trimming, export determinism, error-path, and repeatability tests. Discovered
+  and run by `scripts/check.mjs`.
 - `session-log` stable export bundle (`skills/session-log/scripts/export.mjs`):
   one dispatcher-level command writes the canonical five views — summary,
   transcript (dialogue plus command lines, no tool lines or skill bodies),
@@ -82,6 +96,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `.gitignore` also ignores `session-logs/`, the default output directory of
+  `session-log export` (regenerable derivatives, never source).
 - `AGENTS.md` dedupe (docs-only, no behavior change): `_`/`_dev/` deposit
   semantics now live only in the directory tree; the CHANGELOG obligation is
   stated once under 「约定」; the graduation commit's `feat/<name>` branch,

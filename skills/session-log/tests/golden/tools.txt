@@ -1,0 +1,6 @@
+#1     03:04:06 Read         /home/test/project/README.md
+                     ← 33B
+#9     03:05:01 Bash         node skills/session-log/scripts/claude-code.mjs transcript fixtures/minimal.jsonl
+                     ← 27B
+
+total: 2 calls, 0 errors

@@ -23,5 +23,8 @@ skills/**/_sources/
 # 本地 git worktree（个人开发用，不纳入版本控制）
 .worktree/
 
+# session-log export 的默认输出目录（可由源日志重新生成）
+session-logs/
+
 # TODO
 TODO.md
