@@ -427,6 +427,7 @@ test('fake-gh merge refuses drafts and --delete-branch removes the remote branch
     const draft = run([FAKE_GH, 'pr', 'merge', '1', '--rebase'], { cwd: repo, env: flowEnv });
     assert.notEqual(draft.status, 0);
     assert.match(draft.stderr, /still a draft/);
+    assert.equal(readGh(ghState).calls.at(-1).failed, true);
 
     fakeGh(['pr', 'ready', '1'], { cwd: repo, env: flowEnv });
     fakeGh(['pr', 'merge', '1', '--rebase', '--delete-branch'], { cwd: repo, env: flowEnv });
