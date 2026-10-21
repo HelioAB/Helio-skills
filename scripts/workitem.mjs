@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// workitem — save plans/UAT records and keep a draft PR in sync.
-// Local files are authoritative; gh failures leave a pending entry that
-// "sync" retries. Zero dependencies, Node >= 18.
+// workitem — save plans/UAT records, keep a draft PR in sync, and close a
+// work item. Local files are authoritative; gh failures leave a pending entry
+// that "sync" retries. Zero dependencies, Node >= 18.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,12 +14,13 @@ usage:
   node scripts/workitem.mjs plan save [--skill <name>] [--topic <topic>] [--title <title>]
   node scripts/workitem.mjs uat save --venue <worktree|sandbox> --session <id> --result <pass|findings> [--findings <text>]
   node scripts/workitem.mjs uat save --final --approval <yes|waiver> [--note <text>]
+  node scripts/workitem.mjs close [--sandbox <dir>] [--dry-run | --yes]
   node scripts/workitem.mjs sync
   node scripts/workitem.mjs status
 
 common options:
   --repo <path>   plan save: the main checkout (default: git worktree list
-                  first entry); uat/sync/status: the work item worktree
+                  first entry); uat/sync/status/close: the work item worktree
                   (default: the current checkout)
   --gh <path>     gh executable, or a Node fake (default: $GH_BIN or "gh")
   --help          show this help
@@ -35,15 +36,23 @@ uat save:
   the same section as a PR comment. Repeating an identical section is a no-op.
   On gh failure the local file is still written and a pending entry is saved.
 
+close:
+  Preflights pending: 0, a clean worktree, and a clean main checkout on main,
+  then readies the draft PR, rebase-merges it, points <sandbox>/.claude/skills
+  back at main (when --sandbox is given), removes the worktree's own skill
+  link, removes the worktree, fast-forwards main, deletes the local and remote
+  branch, and verifies the result. Dry-run by default; --yes executes. A PR
+  that is already MERGED skips ready/merge, so an interrupted close can resume.
+
 sync / status:
   Retry pending remote writes / show branch, worktree, PR, and pending state.
   Pending and posted-comment hashes live in skills/<skill>/_dev/sync.json.`;
 
 const VALUE_FLAGS = new Set([
   'skill', 'topic', 'title', 'venue', 'session', 'result', 'findings',
-  'approval', 'note', 'repo', 'gh',
+  'approval', 'note', 'repo', 'gh', 'sandbox',
 ]);
-const BOOLEAN_FLAGS = new Set(['final', 'help']);
+const BOOLEAN_FLAGS = new Set(['final', 'help', 'yes', 'dry-run']);
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 function die(msg) {
@@ -110,8 +119,10 @@ function toplevel(dir) {
   return r.ok ? path.resolve(r.stdout.trim()) : null;
 }
 
-function mainWorktree() {
-  const r = spawnSync('git', ['worktree', 'list', '--porcelain'], { encoding: 'utf8' });
+function mainWorktree(dir = process.cwd()) {
+  const r = spawnSync('git', ['-C', dir, 'worktree', 'list', '--porcelain'], {
+    encoding: 'utf8',
+  });
   if (r.error || r.status !== 0)
     die(`git worktree list failed: ${r.error?.message || (r.stderr || '').trim() || `exit ${r.status}`}`);
   for (const line of r.stdout.split(/\r?\n/)) {
@@ -184,7 +195,7 @@ function gh(args, cwd, flags) {
 
 function listPrs(branch, cwd, flags) {
   const r = gh(
-    ['pr', 'list', '--head', branch, '--state', 'all', '--json', 'number,url,state'],
+    ['pr', 'list', '--head', branch, '--state', 'all', '--json', 'number,url,state,isDraft'],
     cwd,
     flags
   );
@@ -484,10 +495,17 @@ function workContext(flags) {
   const parsed = parseBranch(branch);
   if (!parsed)
     die(
-      `branch "${branch}" is not <skill>/<topic>; uat/sync/status must run inside a work item worktree`
+      `branch "${branch}" is not <skill>/<topic>; uat/sync/status/close must run inside a work item worktree`
     );
   const skillDir = path.join(worktree, 'skills', parsed.skill);
-  if (!fs.existsSync(skillDir)) die(`skill directory does not exist: ${skillDir}`);
+  if (!fs.existsSync(skillDir)) {
+    if (parsed.skill === 'repo')
+      die(
+        `"${branch}" is a repository-level branch; workitem only serves ` +
+          '<skill>/<topic> work items under skills/<skill> — handle repo work manually'
+      );
+    die(`skill directory does not exist: ${skillDir}`);
+  }
   return {
     worktree,
     branch,
@@ -601,6 +619,196 @@ function cmdUatSave(flags) {
   clearPending(state, (p) => p.type === 'comment' && p.hash === hash);
   saveSync(ctx.devDir, state);
   console.log(`PR comment: posted (${pr.url})`);
+}
+
+// ---------- close ----------
+
+function linkScriptRun(main, args) {
+  const r = spawnSync(
+    process.execPath,
+    [path.join(main, 'scripts', 'link-skill.mjs'), ...args],
+    { cwd: main, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }
+  );
+  if (r.error) die(`link-skill ${args.join(' ')} failed: ${r.error.message}`);
+  const out = result(r);
+  if (!out.ok) die(`link-skill ${args.join(' ')} failed: ${errText(out)}`);
+  return out;
+}
+
+function localBranchExists(main, branch) {
+  return git(['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], main, {
+    allowFail: true,
+  }).ok;
+}
+
+function remoteBranchExists(main, branch) {
+  return git(['ls-remote', '--heads', 'origin', branch], main).stdout.trim() !== '';
+}
+
+function verifySandboxLink(sandbox, main, skill) {
+  const linkPath = path.join(sandbox, '.claude', 'skills', skill);
+  let stat;
+  try {
+    stat = fs.lstatSync(linkPath);
+  } catch {
+    die(`sandbox link is missing: ${linkPath}`);
+  }
+  if (!stat.isSymbolicLink()) die(`sandbox path is not a link: ${linkPath}`);
+  let target;
+  try {
+    target = fs.realpathSync(linkPath);
+  } catch (e) {
+    die(`sandbox link is broken: ${linkPath} (${e.message})`);
+  }
+  const expected = fs.realpathSync(path.join(main, 'skills', skill));
+  if (!samePath(target, expected))
+    die(`sandbox link points at ${target}, expected ${expected}`);
+}
+
+function cmdClose(flags) {
+  if (flags.yes && flags['dry-run']) die('close accepts either --yes or --dry-run, not both');
+  const dryRun = !flags.yes;
+  const ctx = workContext(flags);
+  const { worktree, branch, skill, devDir } = ctx;
+  const main = mainWorktree(worktree);
+
+  // Preflight: every check fails closed before anything is changed.
+  const state = loadSync(devDir);
+  if (state.pending.length)
+    die(
+      `pending: ${state.pending.length} unsynced write(s); ` +
+        'run "node scripts/workitem.mjs sync" first'
+    );
+
+  const worktreeStatus = git(['status', '--porcelain'], worktree);
+  if (worktreeStatus.stdout.trim())
+    die(
+      `worktree has uncommitted changes; commit or discard them first:\n` +
+        worktreeStatus.stdout.trim()
+    );
+
+  const mainBranch = branchOf(main);
+  if (mainBranch !== 'main')
+    die(`main checkout (${main}) is on "${mainBranch}", expected "main"`);
+  const mainStatus = git(['status', '--porcelain'], main);
+  if (mainStatus.stdout.trim())
+    die(
+      `main checkout has uncommitted changes; commit or discard them first:\n` +
+        mainStatus.stdout.trim()
+    );
+
+  const list = listPrs(branch, worktree, flags);
+  if (!list.ok) die(`gh pr list failed: ${list.error}`);
+  if (!list.prs.length) die(`no pull request for branch "${branch}"`);
+  const pr = list.prs[0];
+  if (!['OPEN', 'MERGED'].includes(pr.state))
+    die(`pull request #${pr.number} is ${pr.state}; only OPEN or MERGED can be closed`);
+
+  let sandbox = null;
+  if (flags.sandbox) {
+    sandbox = path.resolve(flags.sandbox);
+    let ok = false;
+    try {
+      ok = fs.statSync(sandbox).isDirectory();
+    } catch {
+      ok = false;
+    }
+    if (!ok) die(`--sandbox is not a directory: ${sandbox}`);
+  }
+
+  const sandboxLinkDir = sandbox ? path.join(sandbox, '.claude', 'skills') : null;
+  const worktreeLinkDir = path.join(worktree, '.claude', 'skills');
+
+  console.log(`worktree: ${worktree}`);
+  console.log(`branch: ${branch}`);
+  console.log(`PR: #${pr.number} ${pr.url} (${pr.state}${pr.isDraft ? ', draft' : ''})`);
+
+  function step(label, skipReason, action) {
+    if (skipReason) {
+      console.log(`skip: ${label} (${skipReason})`);
+      return;
+    }
+    if (dryRun) {
+      console.log(`would run: ${label}`);
+      return;
+    }
+    console.log(`run: ${label}`);
+    action();
+  }
+
+  step(
+    `gh pr ready ${pr.number}`,
+    pr.state === 'MERGED'
+      ? 'PR already merged'
+      : pr.isDraft
+        ? null
+        : 'PR is not a draft',
+    () => {
+      const r = gh(['pr', 'ready', String(pr.number)], main, flags);
+      if (!r.ok) die(`gh pr ready failed: ${errText(r)}`);
+    }
+  );
+
+  step(`gh pr merge ${pr.number} --rebase`, pr.state === 'MERGED' ? 'PR already merged' : null, () => {
+    const r = gh(['pr', 'merge', String(pr.number), '--rebase'], main, flags);
+    if (!r.ok) die(`gh pr merge failed: ${errText(r)}`);
+    const after = listPrs(branch, main, flags);
+    if (!after.ok) die(`gh pr list failed after merge: ${after.error}`);
+    if (!after.prs.length || after.prs[0].state !== 'MERGED')
+      die(`PR #${pr.number} did not reach MERGED (state: ${after.prs[0]?.state || 'missing'})`);
+  });
+
+  step(`git -C ${main} fetch origin`, null, () => git(['fetch', 'origin'], main));
+
+  if (sandbox)
+    step(`link-skill ${skill} main --link-dir ${sandboxLinkDir}`, null, () =>
+      linkScriptRun(main, [skill, 'main', '--link-dir', sandboxLinkDir])
+    );
+  else console.log('skip: sandbox link (no --sandbox)');
+
+  step(`link-skill remove ${skill} --link-dir ${worktreeLinkDir}`, null, () =>
+    linkScriptRun(main, ['remove', skill, '--link-dir', worktreeLinkDir])
+  );
+
+  step(`git -C ${main} worktree remove ${worktree}`, null, () => {
+    // The caller may be sitting in the worktree; step out before deleting it.
+    process.chdir(main);
+    git(['worktree', 'remove', worktree], main);
+  });
+
+  step('git pull --ff-only origin main', null, () =>
+    git(['pull', '--ff-only', 'origin', 'main'], main)
+  );
+
+  step(
+    `git branch -D ${branch}`,
+    localBranchExists(main, branch) ? null : 'local branch already deleted',
+    () => git(['branch', '-D', branch], main)
+  );
+
+  step(
+    `git push origin --delete ${branch}`,
+    remoteBranchExists(main, branch) ? null : 'remote branch already deleted',
+    () => git(['push', 'origin', '--delete', branch], main)
+  );
+
+  if (dryRun) {
+    console.log('would verify: worktree gone, local and remote branch gone, sandbox link on main');
+    console.log(`dry run: no changes made (PR ${pr.url})`);
+    return;
+  }
+
+  if (worktreePaths(main).some((p) => samePath(p, worktree)))
+    die(`worktree still present after removal: ${worktree}`);
+  if (localBranchExists(main, branch)) die(`local branch still exists: ${branch}`);
+  if (remoteBranchExists(main, branch)) die(`remote branch still exists on origin: ${branch}`);
+  if (sandbox) verifySandboxLink(sandbox, main, skill);
+
+  console.log(
+    'verify: worktree removed, local and remote branch deleted' +
+      (sandbox ? ', sandbox link points at main' : '')
+  );
+  console.log(`close complete: ${pr.url}`);
 }
 
 // ---------- sync ----------
@@ -739,6 +947,8 @@ if (cmd === 'plan' && sub === 'save') {
   cmdPlanSave(flags);
 } else if (cmd === 'uat' && sub === 'save') {
   cmdUatSave(flags);
+} else if (cmd === 'close' && sub === undefined) {
+  cmdClose(flags);
 } else if (cmd === 'sync' && sub === undefined) {
   cmdSync(flags);
 } else if (cmd === 'status' && sub === undefined) {
