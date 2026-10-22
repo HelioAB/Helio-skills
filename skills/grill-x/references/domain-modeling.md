@@ -4,7 +4,7 @@ Actively build and sharpen the project's domain model as you design. This is the
 
 ## File structure
 
-All docs live under one base directory B: `B/CONTEXT.md` and `B/adr/`; a multi-context repo keeps `B/CONTEXT-MAP.md` pointing to each context's own file inside its source subtree. SKILL.md settles B when docs mode activates — a user-named location wins, existing glossary and ADR files are followed where they live, a bare topic folder gets a topic-named subdirectory, and a project root with none of these is asked first. Everything is created lazily, at the first write. Layout details and formats: [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md) and [ADR-FORMAT.md](./ADR-FORMAT.md).
+All docs for one topic live under that topic's base directory B: `B/CONTEXT.md` and `B/adr/`; a multi-context repo keeps `B/CONTEXT-MAP.md` pointing to each context's own file inside its source subtree. SKILL.md settles B per topic by asking — the location question opens the activation round and reopens when a new topic enters; a user-named location settles it at once. The recommendation follows structural scope: a home covering the topic is followed where it lives (numbering and naming style continued), a home not covering it yields a topic-named sibling subdirectory, and a project root without a home gets `docs/`. Everything is created lazily, at the first write. Layout details and formats: [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md) and [ADR-FORMAT.md](./ADR-FORMAT.md).
 
 ## During the session
 
