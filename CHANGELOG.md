@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `flashcard-extract` skill (in `skills/flashcard-extract/`): turn durable knowledge
+  from a multi-turn AI conversation or an existing Markdown knowledge document into
+  QA and Cloze flashcards — recommend learning goals and coverage, generate candidates
+  in reviewed batches, revise from natural-language feedback, then write every approved
+  card once to a portable Markdown file after final approval. Graduated from
+  `drafts/flashcard-extract` after tests 01–05 (2026-10-21 – 2026-10-23) covered
+  document and dialogue modes, feedback revision, topic shifts, Cloze generation, and
+  merging into an existing card file; test-05 was a partial pass — the strength
+  fidelity and path-confirmation failures were addressed by rule changes in
+  `98ac9e9`, but neither was re-tested. `_dev/` and `_source/` dropped per the
+  `drafts/` convention.
+- Parked, not applied (flashcard-extract): regression cases for the post-test-05
+  fixes — restating a user-supplied path at final approval, "候选 N" numbering,
+  Card/Note double counts, per-batch coverage declarations, and merge-drop
+  declarations — remain to be added and run.
+- Parked, not applied (flashcard-extract): Cloze presentation examples remain untested;
+  the fixed-color-scale cloze blank is heavily hinted by adjacent text;
+  `lighten`/`darken` are not inline code; old and new cards disagree on `Source:` style
+  and category bolding.
 - Work-item close automation (`scripts/workitem.mjs close`): preflights
   `pending: 0`, a clean worktree, and a main checkout on `main`, and refuses
   `repo/<topic>`, CLOSED PRs, and dirty worktrees. With `--yes` it runs ready →
