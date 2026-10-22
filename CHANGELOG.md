@@ -161,6 +161,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in place. SKILL.md, domain-modeling.md, CONTEXT-FORMAT.md, and
   ADR-FORMAT.md now state one consistent rule; they previously contradicted
   each other on whether a user-named location could override `docs/adr/`.
+- grill-x docs-mode write step is pinned to the file operation itself: the
+  writes are issued as real file writes in the same turn, before the round's
+  reply is composed, and the reply reports them one line per write (path and
+  a phrase), never as pasted excerpts. Found in UAT (sandbox__007, scenario
+  d): the model opened two consecutive rounds with 「写入先行」 plus the fully
+  quoted content while never issuing a write; the files appeared only after
+  the user challenged it. The old text already banned reporting an unwritten
+  file — the hardened wording attacks the substitution pattern (composing the
+  write as prose) that made the ban miss.
 - CI triggers: GitHub Actions now runs only a nightly `schedule` audit of
   `main` (`17 14 * * *` UTC, 22:17 China time). Pushes, PR updates, and
   merges do not trigger a run. Gate 1 (`node scripts/check.mjs`) runs
