@@ -168,6 +168,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Workflow procedures moved from `AGENTS.md` into two versioned workflow skills
+  (Proposal A of `docs/plan-repo-restructure.md`, pure relocation with no
+  semantic change): `.claude/skills/graduation/` (draft-stage, graduate) and
+  `.claude/skills/iteration/` (plan, uat, merge-close with the 11-step cleanup
+  order, sync, workitem-commands); each SKILL.md holds only the trigger-word
+  map, core invariants, and a pointer table into `references/`.
+  `AGENTS.md` shrinks to the repo positioning, the directory tree, and a
+  process index table; `.gitignore` now ignores `.claude/skills/*` with
+  per-skill `!` exceptions, so local junction installs stay untracked while
+  the workflow skills are versioned; `scripts/check.mjs` extends the
+  frontmatter, relative-link, kebab-case, and tracked-`_`-dir checks to the
+  versioned workflow skills (gitignored junction links are skipped).
 - grill-x docs mode no longer assumes the project root. The output base is
   now always confirmed by a question — the first block of the activation
   round, and again whenever a new topic enters — recommended from structural

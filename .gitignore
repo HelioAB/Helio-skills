@@ -13,8 +13,11 @@ desktop.ini
 # Claude Code local settings (machine-specific)
 .claude/settings.local.json
 
-# 本地 skill 安装副本（由 skills/ 或 drafts/ 派生，非源文件）
-.claude/skills/
+# 本地 skill 安装副本（由 skills/ 或 drafts/ 派生，非源文件）；
+# 入库的工作流 skill 用逐 skill ! 例外放行（见 AGENTS.md 目录结构）
+.claude/skills/*
+!.claude/skills/graduation/
+!.claude/skills/iteration/
 
 # skills/ 迭代期的本地开发目录（不入库；约定见 AGENTS.md）
 skills/**/_dev/
