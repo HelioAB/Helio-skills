@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SKILLS = path.join(REPO, 'skills');
+const WORKFLOW_SKILLS = path.join(REPO, '.claude', 'skills');
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const USAGE = `check — deterministic repository checks (gate 1)
@@ -17,15 +18,18 @@ const USAGE = `check — deterministic repository checks (gate 1)
 usage: node scripts/check.mjs [--skill <name>] [--help]
 
 Always checked:
-  repo invariants    CLAUDE.md pointer, no tracked skills/**/_dev|_sources,
-                     kebab-case skill dirs
+  repo invariants    CLAUDE.md pointer, no tracked skills/**/_dev|_sources or
+                     .claude/skills/**/_dev|_sources, kebab-case skill dirs
   skill structure    SKILL.md, frontmatter name/description, relative links,
-                     non-empty references/
+                     non-empty references/ — over skills/ and the versioned
+                     workflow skills under .claude/skills/ (gitignored local
+                     junction links are skipped)
   script syntax      node --check over skills/**/*.mjs and scripts/**/*.mjs
   fixture tests      scripts/tests/run.mjs
 
-With --skill <name>, only that skill's structure and tests/run.mjs run
-(repo invariants, script syntax, and script fixture tests still run).
+With --skill <name>, only that skill's structure and its tests/run.mjs run,
+looked up under skills/ then .claude/skills/ (repo invariants, script syntax,
+and script fixture tests still run).
 
 Prints one PASS/FAIL line per check and exits 1 on any hard failure.`;
 
@@ -174,8 +178,10 @@ function trackedFiles() {
 }
 
 function checkTrackedDevDirs() {
-  const label = 'repo: no tracked skills/**/_dev or _sources';
-  const bad = trackedFiles().filter((f) => /^skills\/.*\/_(?:dev|sources)\//.test(f));
+  const label = 'repo: no tracked _dev/_sources under skills/ or .claude/skills/';
+  const bad = trackedFiles().filter((f) =>
+    /^(?:skills|\.claude\/skills)\/.*\/_(?:dev|sources)\//.test(f)
+  );
   if (!bad.length) pass(label);
   else fail(label, `${bad.length} tracked file(s):\n${bad.slice(0, 10).join('\n')}`);
 }
@@ -189,6 +195,25 @@ function skillDirs() {
     .sort();
 }
 
+// Versioned workflow skills under .claude/skills/: real directories that are
+// not gitignored. Local junction installs match `.claude/skills/*` in
+// .gitignore and are skipped, so the checks never follow a link into the
+// main checkout.
+function workflowSkillDirs() {
+  if (!fs.existsSync(WORKFLOW_SKILLS)) return [];
+  const out = [];
+  for (const entry of fs.readdirSync(WORKFLOW_SKILLS, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const relative = `.claude/skills/${entry.name}`;
+    const r = spawnSync('git', ['-C', REPO, 'check-ignore', '-q', relative], {
+      encoding: 'utf8',
+    });
+    if (r.status === 0) continue; // ignored → local install link
+    out.push(entry.name);
+  }
+  return out.sort();
+}
+
 function checkSkillNames(skills) {
   const label = 'repo: skill directories are kebab-case';
   const bad = skills.filter((s) => !KEBAB.test(s));
@@ -198,8 +223,8 @@ function checkSkillNames(skills) {
 
 // ---------- skill structure ----------
 
-function checkSkill(name) {
-  const dir = path.join(SKILLS, name);
+function checkSkill(skillRoot, name) {
+  const dir = path.join(skillRoot, name);
   const errors = [];
   const skillFile = path.join(dir, 'SKILL.md');
 
@@ -251,7 +276,7 @@ function checkSkill(name) {
     }
   }
 
-  const label = `skills/${name}: structure, frontmatter, links, references`;
+  const label = `${rel(skillRoot)}/${name}: structure, frontmatter, links, references`;
   if (!errors.length) pass(label);
   else fail(label, errors.join('\n'));
 }
@@ -301,10 +326,10 @@ function checkScriptTests() {
   if (fs.existsSync(file)) runTest('scripts/tests/run.mjs', file);
 }
 
-function checkSkillTests(skills) {
-  for (const name of skills) {
-    const file = path.join(SKILLS, name, 'tests', 'run.mjs');
-    if (fs.existsSync(file)) runTest(`skills/${name}/tests/run.mjs`, file);
+function checkSkillTests(selected) {
+  for (const { root, name } of selected) {
+    const file = path.join(root, name, 'tests', 'run.mjs');
+    if (fs.existsSync(file)) runTest(`${rel(root)}/${name}/tests/run.mjs`, file);
   }
 }
 
@@ -349,18 +374,29 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 const allSkills = skillDirs();
-if (skillFilter && !allSkills.includes(skillFilter)) {
-  console.error(`error: unknown skill "${skillFilter}" — found: ${allSkills.join(', ') || '(none)'}`);
-  process.exit(1);
+const workflowSkills = workflowSkillDirs();
+let selected = [
+  ...allSkills.map((name) => ({ root: SKILLS, name })),
+  ...workflowSkills.map((name) => ({ root: WORKFLOW_SKILLS, name })),
+];
+if (skillFilter) {
+  const hit = selected.find((s) => s.name === skillFilter);
+  if (!hit) {
+    const found = selected.map((s) => s.name);
+    console.error(
+      `error: unknown skill "${skillFilter}" — found: ${found.join(', ') || '(none)'}`
+    );
+    process.exit(1);
+  }
+  selected = [hit];
 }
-const selected = skillFilter ? [skillFilter] : allSkills;
 
 console.log(`check: repository root${skillFilter ? ` (skill ${skillFilter})` : ''}\n`);
 
 checkClaudePointer();
 checkTrackedDevDirs();
-checkSkillNames(allSkills);
-for (const name of selected) checkSkill(name);
+checkSkillNames(selected.map((s) => s.name));
+for (const { root, name } of selected) checkSkill(root, name);
 checkScriptSyntax();
 checkSkillTests(selected);
 checkScriptTests();
