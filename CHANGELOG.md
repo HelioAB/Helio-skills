@@ -293,6 +293,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- The entire automated development workflow; the repository now runs a purely
+  manual git process (branch/commit/PR/merge driven directly by the user) while
+  a replacement is designed. Gone: the versioned workflow skills
+  `.claude/skills/iteration/` and `.claude/skills/graduation/` (the
+  trigger-word protocol for plan/UAT/merge/main-sync/graduation),
+  `scripts/workitem.mjs` with its integration suite `scripts/tests/`, gate 1
+  `scripts/check.mjs`, the nightly audit `.github/workflows/ci.yml`, and
+  `docs/plan-repo-restructure.md` (the plan that had introduced the workflow
+  skills). `.claude/settings.json` keeps only the `link-skill.mjs` allow rule;
+  `scripts/link-skill.mjs` and the `.githooks/pre-commit` CLAUDE.md-pointer
+  guard stay. Directory structure — `skills/`, `drafts/`, `CHANGELOG.md` — is
+  unchanged.
 - Root `CONTEXT.md` and `docs/adr/` — artifacts produced by grill-x docs mode
   while developing `session-log`, not repository conventions. Removed from
   `main`; the grill-x docs-mode behavior is treated as a skill defect."
